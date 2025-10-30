@@ -9,11 +9,12 @@ import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 // Don't import createClient unless needed
 // import { createClient } from "@/lib/supabase/client"
 import { fetchCustomers } from "@/lib/api/customers"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const isExcel = excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()
+  const isExcel = getDatabaseType() === 'excel'
 
   useEffect(() => {
     if (isExcel) {

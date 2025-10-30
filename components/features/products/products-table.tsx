@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -30,6 +30,10 @@ interface ProductsTableProps {
 
 export function ProductsTable({ products: initialProducts }: ProductsTableProps) {
   const [products, setProducts] = useState(initialProducts)
+  useEffect(() => {
+    console.log('[ProductsTable] props changed, count =', initialProducts?.length || 0)
+    setProducts(initialProducts || [])
+  }, [initialProducts])
   const [searchTerm, setSearchTerm] = useState("")
   const router = useRouter()
   const { toast } = useToast()

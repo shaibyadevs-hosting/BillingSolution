@@ -8,13 +8,14 @@ import { toast } from "sonner"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 import { createClient } from "@/lib/supabase/client"
 import { fetchProducts } from "@/lib/api/products"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const isExcel = excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()
+    const isExcel = getDatabaseType() === 'excel'
     if (isExcel) {
       // Prefer the Excel API so we read from the data folder
       (async () => {

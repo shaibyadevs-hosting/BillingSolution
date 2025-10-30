@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,10 @@ interface InvoicesTableProps {
 
 export function InvoicesTable({ invoices: initialInvoices }: InvoicesTableProps) {
   const [invoices, setInvoices] = useState(initialInvoices)
+  useEffect(() => {
+    console.log('[InvoicesTable] props changed, count =', initialInvoices?.length || 0)
+    setInvoices(initialInvoices || [])
+  }, [initialInvoices])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const router = useRouter()
