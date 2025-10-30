@@ -57,6 +57,43 @@ interface InvoiceFormProps {
   settings: BusinessSettings | null
 }
 
+// Sync the Invoice and LineItem shape across Excel/DB
+interface Invoice {
+  id: string;
+  user_id?: string;
+  customer_id: string;
+  invoice_number: string;
+  invoice_date: string;
+  due_date?: string;
+  status: string;
+  is_gst_invoice: boolean;
+  subtotal: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  igst_amount: number;
+  total_amount: number;
+  notes?: string;
+  terms?: string;
+  created_at?: string;
+  updated_at?: string;
+  items: LineItem[];
+}
+
+interface LineItem {
+  id: string;
+  invoice_id?: string;
+  product_id: string|null;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  discount_percent: number;
+  gst_rate: number;
+  hsn_code?: string;
+  line_total?: number;
+  gst_amount?: number;
+  created_at?: string;
+}
+
 export function InvoiceForm({ customers, products, settings }: InvoiceFormProps) {
   const router = useRouter()
   const { toast } = useToast()
@@ -142,7 +179,13 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
     let igst = 0
 
     lineItems.forEach((item) => {
-      const calc = calculateLineItem(item)
+      // Fix: Ensure we pass the correct format to calculateLineItem
+      const calc = calculateLineItem({
+        unitPrice: item.unit_price,
+        discountPercent: item.discount_percent,
+        gstRate: item.gst_rate,
+        quantity: item.quantity,
+      })
       subtotal += calc.taxableAmount
 
       if (isGstInvoice) {
@@ -175,9 +218,16 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
     setIsLoading(true)
     try {
       if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-        // Add invoice to Excel; nest lineItems into invoice object for this mode
-        const id = crypto.randomUUID()
-        const invoicePayload = {
+        // Validate required fields (mimic backend validation)
+        if (!customerId) throw new Error("Customer is required.");
+        if (!invoiceNumber) throw new Error("Invoice number is required.");
+        if (!invoiceDate) throw new Error("Invoice date is required.");
+        if (!lineItems.length || lineItems.some(it => !it.description || !it.quantity || isNaN(it.unit_price))) {
+          throw new Error('All line items must be filled.');
+        }
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        const excelInvoice: Invoice = {
           id,
           customer_id: customerId,
           invoice_number: invoiceNumber,
@@ -190,18 +240,41 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
           sgst_amount: totals.sgst,
           igst_amount: totals.igst,
           total_amount: totals.total,
-          notes,
-          terms,
-          items: lineItems, // << store array directly in cell
+          notes: notes,
+          terms: terms,
+          created_at: now,
+          updated_at: now,
+          items: lineItems.map(it => ({
+            id: it.id,
+            product_id: it.product_id,
+            description: it.description,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            discount_percent: it.discount_percent,
+            gst_rate: it.gst_rate,
+            hsn_code: it.hsn_code ?? '',
+            // totals below are helpful for Excel-only, but optional in DB
+            line_total: calculateLineItem(it).lineTotal,
+            gst_amount: calculateLineItem(it).gstAmount,
+          }))
         }
-        excelSheetManager.add('invoices', invoicePayload)
+        try {
+          excelSheetManager.add('invoices', excelInvoice);
+          if (!excelSheetManager.workbook || !excelSheetManager.workbook.Sheets["Invoices"]) {
+            window.alert("Excel sheet 'Invoices' was not created or is missing. Click 'Check Excel Integrity' or allow pop-up/download if prompted.");
+            throw new Error("Excel sheet missing after save.");
+          }
+        } catch (excelError) {
+          window.alert('Excel Save Failed: ' + (excelError instanceof Error && excelError.message ? excelError.message : JSON.stringify(excelError)));
+          throw excelError;
+        }
         toast({
           title: "Success",
           description: "Invoice created in Excel file",
-        })
-        router.push(`/invoices`)
-        router.refresh()
-        return
+        });
+        router.push(`/invoices`);
+        router.refresh();
+        return;
       }
 
       const supabase = createClient()
@@ -246,7 +319,13 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
         } as any
 
         const itemsToSave = lineItems.map((item) => {
-          const calc = calculateLineItem(item)
+          // Ensure the shape matches the expected LineItem type for calculateLineItem
+          const calc = calculateLineItem({
+            unitPrice: item.unit_price,
+            quantity: item.quantity,
+            discountPercent: item.discount_percent,
+            gstRate: item.gst_rate,
+          })
           return {
             id: crypto.randomUUID(),
             invoice_id: id,
@@ -306,7 +385,14 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
 
       // Create invoice items
       const itemsToInsert = lineItems.map((item) => {
-        const calc = calculateLineItem(item)
+        const calc = calculateLineItem({
+          quantity: item.quantity,
+          unitPrice: item.unit_price,
+          discountPercent: item.discount_percent,
+          gstRate: item.gst_rate,
+          hsnCode: item.hsn_code,
+          hsnCode: item.hsn_code,
+        })
         return {
           invoice_id: invoice.id,
           product_id: item.product_id,

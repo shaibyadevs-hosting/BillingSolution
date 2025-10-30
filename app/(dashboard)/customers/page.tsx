@@ -6,41 +6,46 @@ import Link from "next/link"
 import { CustomersTable } from "@/components/features/customers/customers-table"
 import { toast } from "sonner"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
-import { createClient } from "@/lib/supabase/client"
+// Don't import createClient unless needed
+// import { createClient } from "@/lib/supabase/client"
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const isExcel = excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()
 
   useEffect(() => {
-    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+    if (isExcel) {
       setCustomers([...excelSheetManager.getList('customers')])
       setIsLoading(false)
       const unsub = excelSheetManager.subscribe(() => setCustomers([...excelSheetManager.getList('customers')]))
       return unsub
     } else {
-      const fetchData = async () => {
-        setIsLoading(true)
-        const supabase = createClient()
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) {
-          setCustomers([])
+      // Only import and use Supabase when NOT in Excel mode
+      import("@/lib/supabase/client").then(({ createClient }) => {
+        const fetchData = async () => {
+          setIsLoading(true)
+          const supabase = createClient()
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
+          if (!user) {
+            setCustomers([])
+            setIsLoading(false)
+            return
+          }
+          const { data: dbCustomers } = await supabase
+            .from("customers")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+          setCustomers(dbCustomers || [])
           setIsLoading(false)
-          return
         }
-        const { data: dbCustomers } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-        setCustomers(dbCustomers || [])
-        setIsLoading(false)
-      }
-      fetchData()
+        fetchData()
+      })
     }
-  }, [])
+  }, [isExcel])
 
   // Excel import logic
   function ExcelImport() {

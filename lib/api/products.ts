@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/client"
+import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 export async function fetchProducts() {
+  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+    return excelSheetManager.getList("products")
+  }
   const supabase = createClient()
   const {
     data: { user },
@@ -19,6 +23,11 @@ export async function fetchProducts() {
 }
 
 export async function createProduct(productData: any) {
+  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+    const id = productData.id || crypto.randomUUID()
+    excelSheetManager.add("products", { ...productData, id })
+    return { ...productData, id }
+  }
   const supabase = createClient()
   const {
     data: { user },
@@ -40,6 +49,10 @@ export async function createProduct(productData: any) {
 }
 
 export async function updateProduct(id: string, updates: any) {
+  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+    excelSheetManager.update("products", id, updates)
+    return { ...updates, id }
+  }
   const supabase = createClient()
 
   const { data, error } = await supabase.from("products").update(updates).eq("id", id).select().single()
@@ -49,6 +62,10 @@ export async function updateProduct(id: string, updates: any) {
 }
 
 export async function deleteProduct(id: string) {
+  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+    excelSheetManager.remove("products", id)
+    return
+  }
   const supabase = createClient()
 
   const { error } = await supabase.from("products").delete().eq("id", id)

@@ -116,9 +116,9 @@ class ExcelSheetManager {
           await writable.write(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
           await writable.close()
           console.log("[excelSheetManager] Persisted Excel to file handle.")
-        } catch (fe) {
+        } catch (fe: any) {
           console.error("[excelSheetManager] File handle Excel write failed", fe)
-          throw new Error('Failed to write Excel file via File System Access API: ' + (fe && fe.message ? fe.message : JSON.stringify(fe)))
+          throw new Error('Failed to write Excel file via File System Access API: ' + (fe && typeof fe === 'object' && 'message' in fe ? (fe as any).message : JSON.stringify(fe)))
         }
       } else {
         try {

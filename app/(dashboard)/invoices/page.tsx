@@ -3,8 +3,20 @@ import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import Link from "next/link"
 import { InvoicesTable } from "@/components/features/invoices/invoices-table"
+import { excelSheetManager } from "@/lib/utils/excel-sync-controller";
 
 export default async function InvoicesPage() {
+  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+    const invoices = excelSheetManager.getList("invoices");
+    return (
+      // Use the same UI as before with Excel invoices as input (replace DB prop/args/JSX with Excel data)
+      <div className="mx-auto max-w-5xl space-y-6">
+        <h1 className="text-3xl font-bold">Invoices (Excel)</h1>
+        {/* Add your table/grid rendering here, reusing your component and passing invoices */}
+        {/* Example: <InvoicesTable invoices={invoices}/> if such a component exists */}
+      </div>
+    );
+  }
   const supabase = await createClient()
   const {
     data: { user },
