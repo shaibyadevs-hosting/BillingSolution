@@ -58,6 +58,23 @@ export function exportInvoicesToExcel(invoices: any[]) {
   XLSX.writeFile(workbook, "invoices.xlsx")
 }
 
+export function exportEmployeesToExcel(employees: any[]) {
+  const worksheet = XLSX.utils.json_to_sheet(
+    employees.map((e) => ({
+      Name: e.name,
+      Email: e.email,
+      Phone: e.phone,
+      Role: e.role,
+      Salary: e.salary,
+      "Joining Date": e.joining_date,
+      Active: e.is_active ? "Yes" : "No",
+    })),
+  )
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Employees")
+  XLSX.writeFile(workbook, "employees.xlsx")
+}
+
 export async function parseExcelProducts(file: File): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

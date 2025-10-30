@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Edit2, Trash2 } from "lucide-react"
+import { Plus, FileSpreadsheet, Search, Edit2, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
@@ -70,6 +70,46 @@ export default function EmployeesPage() {
     }
   }
 
+  // Excel import logic
+  function ExcelImport() {
+    const inputRef = useRef<HTMLInputElement | null>(null)
+    const [importing, setImporting] = useState(false)
+    const handleClick = () => inputRef.current?.click()
+    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.files?.[0]) return
+      setImporting(true)
+      try {
+        const { importEmployeesFromExcel } = await import("@/lib/utils/excel-import")
+        const { syncExcelWithDexieAndSupabase } = await import("@/lib/utils/excel-sync-controller")
+        const res = await importEmployeesFromExcel(e.target.files[0])
+        if (!res.success) throw new Error(res.errors[0] || "Import failed")
+        await syncExcelWithDexieAndSupabase(
+          (typeof window !== "undefined" && (localStorage.getItem("storageMode") as any)) || "database"
+        )
+        toast({ title: "Import success", description: "Employees imported!" })
+      } catch (error: any) {
+        toast({ title: "Import failed", description: error.message || error.toString(), variant: "destructive" })
+      } finally {
+        setImporting(false)
+        if (inputRef.current) inputRef.current.value = ""
+      }
+    }
+    return (
+      <>
+        <Button type="button" variant="secondary" className="mr-2" onClick={handleClick} disabled={importing}>
+          <FileSpreadsheet className="mr-2 h-4 w-4" /> Import from Excel
+        </Button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={handleImport}
+          style={{ display: "none" }}
+        />
+      </>
+    )
+  }
+
   const filteredEmployees = employees.filter(
     (emp) =>
       emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -83,12 +123,15 @@ export default function EmployeesPage() {
           <h1 className="text-3xl font-bold">Employees</h1>
           <p className="text-muted-foreground">Manage your team members</p>
         </div>
-        <Button asChild>
-          <Link href="/employees/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Employee
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExcelImport />
+          <Button asChild>
+            <Link href="/employees/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Employee
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>

@@ -49,3 +49,87 @@ export async function importProductsFromExcel(file: File): Promise<ImportResult>
     }
   }
 }
+
+export async function importCustomersFromExcel(file: File): Promise<ImportResult> {
+  try {
+    const buffer = await file.arrayBuffer()
+    const workbook = XLSX.read(buffer, { type: "array" })
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+    const data = XLSX.utils.sheet_to_json(worksheet)
+
+    const errors: string[] = []
+    const customers = data
+      .map((row: any, index: number) => {
+        try {
+          return {
+            name: row["Name"] || row.name,
+            email: row.Email || row.email || "",
+            phone: row.Phone || row.phone || "",
+            gstin: row.GSTIN || row.gstin || "",
+            billing_address: row["Billing Address"] || row.billing_address || "",
+            shipping_address: row["Shipping Address"] || row.shipping_address || "",
+            notes: row.Notes || row.notes || "",
+          }
+        } catch (error) {
+          errors.push(`Row ${index + 2}: ${error instanceof Error ? error.message : "Invalid data"}`)
+          return null
+        }
+      })
+      .filter((c) => c !== null)
+
+    return {
+      success: errors.length === 0,
+      data: customers,
+      errors,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      data: [],
+      errors: [error instanceof Error ? error.message : "Failed to import file"],
+    }
+  }
+}
+
+export async function importEmployeesFromExcel(file: File): Promise<ImportResult> {
+  try {
+    const buffer = await file.arrayBuffer()
+    const workbook = XLSX.read(buffer, { type: "array" })
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+    const data = XLSX.utils.sheet_to_json(worksheet)
+
+    const errors: string[] = []
+    const employees = data
+      .map((row: any, index: number) => {
+        try {
+          const role = (row.Role || row.role || "employee").toString().toLowerCase()
+          if (!["admin", "employee"].includes(role)) throw new Error("Invalid role")
+          return {
+            name: row["Name"] || row.name,
+            email: row.Email || row.email || "",
+            phone: row.Phone || row.phone || "",
+            role,
+            salary: Number.parseFloat(row.Salary || row.salary || 0),
+            joining_date: row["Joining Date"] || row.joining_date || null,
+            is_active: (row.Active || row.is_active || "Yes").toString().toLowerCase() === "yes",
+          }
+        } catch (error) {
+          errors.push(`Row ${index + 2}: ${error instanceof Error ? error.message : "Invalid data"}`)
+          return null
+        }
+      })
+      .filter((e) => e !== null)
+
+    return {
+      success: errors.length === 0,
+      data: employees,
+      errors,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      data: [],
+      errors: [error instanceof Error ? error.message : "Failed to import file"],
+    }
+  }
+}

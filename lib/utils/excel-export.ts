@@ -77,3 +77,20 @@ export function exportCustomersToExcel(customers: any[]): void {
     sheets: [{ name: "Customers", data }],
   })
 }
+
+export function exportEmployeesToExcel(employees: any[]): void {
+  const data = employees.map((e) => ({
+    Name: e.name,
+    Email: e.email || "",
+    Phone: e.phone || "",
+    Role: e.role,
+    Salary: e.salary || 0,
+    "Joining Date": e.joining_date || "",
+    Active: e.is_active ? "Yes" : "No",
+  }))
+
+  exportToExcel({
+    filename: `Employees_${new Date().toISOString().split("T")[0]}.xlsx`,
+    sheets: [{ name: "Employees", data }],
+  })
+}
