@@ -1,27 +1,45 @@
-import { createClient } from "@/lib/supabase/server"
+"use client"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
 import { ProductsTable } from "@/components/features/products/products-table"
-import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
+import { createClient } from "@/lib/supabase/client"
 
-export default async function ProductsPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const [products, setProducts] = useState([])
+export default function ProductsPage() {
+  const [products, setProducts] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
       setProducts([...excelSheetManager.getList('products')])
+      setIsLoading(false)
       const unsub = excelSheetManager.subscribe(() => setProducts([...excelSheetManager.getList('products')]))
       return unsub
+    } else {
+      const fetchData = async () => {
+        setIsLoading(true)
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) {
+          setProducts([])
+          setIsLoading(false)
+          return
+        }
+        const { data: dbProducts } = await supabase
+          .from("products")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+        setProducts(dbProducts || [])
+        setIsLoading(false)
+      }
+      fetchData()
     }
-    // else: fetch and set with existing Supabase method (could be SSR or useEffect used for DB mode)
   }, [])
 
   // Excel import logic
@@ -34,15 +52,12 @@ export default async function ProductsPage() {
       setImporting(true)
       try {
         const { importProductsFromExcel } = await import("@/lib/utils/excel-import")
-        const { syncExcelWithDexieAndSupabase } = await import("@/lib/utils/excel-sync-controller")
         const res = await importProductsFromExcel(e.target.files[0])
         if (!res.success) throw new Error(res.errors[0] || "Import failed")
-        // Always store to DB or Dexie, then sync
-        // (logic could check storageMode; for simplicity just sync after import)
-        await syncExcelWithDexieAndSupabase(
-          (typeof window !== "undefined" && (localStorage.getItem("storageMode") as any)) || "database"
-        )
         toast.success("Products imported!")
+        if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+          // Subscriber should update table
+        }
       } catch (error: any) {
         toast.error("Import failed: " + (error.message || error.toString()))
       } finally {

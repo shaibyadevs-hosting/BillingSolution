@@ -1,27 +1,45 @@
-import { createClient } from "@/lib/supabase/server"
+"use client"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
 import { CustomersTable } from "@/components/features/customers/customers-table"
-import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
+import { createClient } from "@/lib/supabase/client"
 
-export default async function CustomersPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const [customers, setCustomers] = useState([])
+export default function CustomersPage() {
+  const [customers, setCustomers] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
       setCustomers([...excelSheetManager.getList('customers')])
+      setIsLoading(false)
       const unsub = excelSheetManager.subscribe(() => setCustomers([...excelSheetManager.getList('customers')]))
       return unsub
+    } else {
+      const fetchData = async () => {
+        setIsLoading(true)
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) {
+          setCustomers([])
+          setIsLoading(false)
+          return
+        }
+        const { data: dbCustomers } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+        setCustomers(dbCustomers || [])
+        setIsLoading(false)
+      }
+      fetchData()
     }
-    // else: fetch and set with existing Supabase method (could be SSR or useEffect used for DB mode)
   }, [])
 
   // Excel import logic
@@ -34,13 +52,12 @@ export default async function CustomersPage() {
       setImporting(true)
       try {
         const { importCustomersFromExcel } = await import("@/lib/utils/excel-import")
-        const { syncExcelWithDexieAndSupabase } = await import("@/lib/utils/excel-sync-controller")
         const res = await importCustomersFromExcel(e.target.files[0])
         if (!res.success) throw new Error(res.errors[0] || "Import failed")
-        await syncExcelWithDexieAndSupabase(
-          (typeof window !== "undefined" && (localStorage.getItem("storageMode") as any)) || "database"
-        )
         toast.success("Customers imported!")
+        if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+          // Could refresh list here, but subscriber above should handle it
+        }
       } catch (error: any) {
         toast.error("Import failed: " + (error.message || error.toString()))
       } finally {
