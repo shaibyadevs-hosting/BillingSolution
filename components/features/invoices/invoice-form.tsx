@@ -18,7 +18,7 @@ import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
 import { db } from "@/lib/db/dexie"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
-import { createInvoice, updateInvoice } from "@/lib/api/invoices";
+import { createInvoice } from "@/lib/api/invoices";
 
 interface Customer {
   id: string
@@ -218,15 +218,36 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
     e.preventDefault();
     setIsLoading(true);
     try {
-      if (invoiceId) {
-        await updateInvoice(invoiceId, { /* pass update fields from form state here */ });
-        toast({ title: "Success", description: "Invoice updated in Excel" });
-        router.push(`/invoices/${invoiceId}`);
-      } else {
-        await createInvoice({ /* pass form fields here */ }, lineItems);
-        toast({ title: "Success", description: "Invoice created in Excel" });
-        router.push("/invoices");
-      }
+      const t = calculateTotals();
+      const invoiceData = {
+        customer_id: customerId,
+        invoice_number: invoiceNumber,
+        invoice_date: invoiceDate,
+        status: "draft",
+        is_gst_invoice: isGstInvoice,
+        subtotal: t.subtotal,
+        cgst_amount: t.cgst,
+        sgst_amount: t.sgst,
+        igst_amount: t.igst,
+        total_amount: t.total,
+        notes,
+        terms,
+        created_at: new Date().toISOString(),
+      } as any;
+      const items = lineItems.map((li) => ({
+        id: li.id,
+        product_id: li.product_id,
+        description: li.description,
+        quantity: li.quantity,
+        unit_price: li.unit_price,
+        discount_percent: li.discount_percent,
+        gst_rate: li.gst_rate,
+        hsn_code: li.hsn_code,
+      }));
+      console.log('[InvoiceForm] Saving invoice', invoiceData, items);
+      await createInvoice(invoiceData, items);
+      toast({ title: "Success", description: "Invoice created in Excel" });
+      router.push("/invoices");
       router.refresh();
     } catch (error) {
       toast({

@@ -101,108 +101,16 @@ class ExcelSheetManager {
   }
 
   async persistAllToExcel() {
-    try {
-      this.ensureWorkbookIfNeeded(true);
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(this.products), "Products")
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(this.customers), "Customers")
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(this.employees), "Employees")
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(this.invoices), "Invoices")
-      this.workbook = wb
-      if (this.fh && 'createWritable' in this.fh) {
-        try {
-          const writable = await this.fh.createWritable()
-          const out = XLSX.write(wb, { type: "array", bookType: "xlsx" })
-          await writable.write(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
-          await writable.close()
-          console.log("[excelSheetManager] Persisted Excel to file handle.")
-        } catch (fe: any) {
-          console.error("[excelSheetManager] File handle Excel write failed", fe)
-          throw new Error('Failed to write Excel file via File System Access API: ' + (fe && typeof fe === 'object' && 'message' in fe ? (fe as any).message : JSON.stringify(fe)))
-        }
-      } else {
-        try {
-          XLSX.writeFile(wb, "BillingData.xlsx")
-          console.log("[excelSheetManager] Persisted Excel to download (fallback).")
-        } catch (de) {
-          console.error("[excelSheetManager] Excel download (writeFile) failed", de)
-          throw new Error(
-            'Failed to trigger Excel file download: ' +
-            (de && typeof de === 'object' && 'message' in de
-              ? (de as any).message
-              : JSON.stringify(de))
-          )
-        }
-      }
-    } catch (e) {
-      if (e instanceof Error) {
-        throw e
-      } else {
-        throw new Error('[excelSheetManager] persistAllToExcel unknown error: ' + JSON.stringify(e))
-      }
-    }
+    // No-op: persistence handled by API routes; keep method for compatibility
+    this.ensureWorkbookIfNeeded(true)
+    this.workbook = this.workbook || XLSX.utils.book_new()
   }
 
   // Ensures workbook exists, sheets exist, and (optionally) fills with starter mock data
-  async ensureWorkbookAndSheetsWithData(fillMock = false) {
-    // If no workbook or file handle, optionally prompt/auto-create
-    if (!this.workbook || !this.fh) {
-      // Try to create and prompt user to save a file
-      if ('showSaveFilePicker' in window) {
-        const defaultSheetNames = ["Products","Customers","Employees","Invoices"];
-        const options = {
-          suggestedName: "BillingData.xlsx",
-          types: [{ description: "Excel Workbook", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } }]
-        };
-        const fileHandle = await (window as any).showSaveFilePicker(options);
-        this.fh = fileHandle;
-        this.workbook = XLSX.utils.book_new();
-        // Add empty or mock sheets, if required
-        for (const sheetName of defaultSheetNames) {
-          let data: any[] = [];
-          if (fillMock) {
-            if (sheetName === "Products") data = [{ id: crypto.randomUUID(), name: "Demo Widget", sku: "WM-1", category: "Demo", price: 45.5, cost_price: 20, stock_quantity: 10, unit: "piece", hsn_code: "9999", gst_rate: 18, is_active: true }];
-            if (sheetName === "Customers") data = [{ id: crypto.randomUUID(), name: "Demo Customer", email: "demo@example.com", phone: "1234567890", gstin: "", address: "123 Main Road" }];
-            if (sheetName === "Employees") data = [{ id: crypto.randomUUID(), name: "Demo Employee", title: "Owner", salary: 10000 }];
-            if (sheetName === "Invoices") data = [{ id: crypto.randomUUID(), customer_id: "", total: 90.5, created_at: new Date().toISOString(), items: "[]" }];
-          }
-          XLSX.utils.book_append_sheet(this.workbook, XLSX.utils.json_to_sheet(data), sheetName);
-        }
-        await this.persistAllToExcel();
-        await this.loadAllFromExcel();
-        this.setExcelMode(true);
-        this.notify();
-        return { created: true, repaired: false, filled: fillMock };
-      } else {
-        // fallback: user must import/upload
-        alert("File System Access API not available. Please use Upload/Import.");
-        return { created: false, repaired: false, filled: false };
-      }
-    }
-    // If workbook open, ensure all standard sheets exist with mock/filler if desired
-    let repaired = false, filled = false;
-    const sheetNames = ["Products","Customers","Employees","Invoices"];
-    for (const sheetName of sheetNames) {
-      if (!this.workbook.Sheets[sheetName]) {
-        XLSX.utils.book_append_sheet(this.workbook, XLSX.utils.json_to_sheet([]), sheetName);
-        repaired = true;
-      }
-      // Optionally add mock data if sheet empty
-      const rows = XLSX.utils.sheet_to_json(this.workbook.Sheets[sheetName]);
-      if (fillMock && (!rows || rows.length === 0)) {
-        let data: any[] = [];
-        if (sheetName === "Products") data = [{ id: crypto.randomUUID(), name: "Demo Widget", sku: "WM-1", category: "Demo", price: 45.5, cost_price: 20, stock_quantity: 10, unit: "piece", hsn_code: "9999", gst_rate: 18, is_active: true }];
-        if (sheetName === "Customers") data = [{ id: crypto.randomUUID(), name: "Demo Customer", email: "demo@example.com", phone: "1234567890", gstin: "", address: "123 Main Road" }];
-        if (sheetName === "Employees") data = [{ id: crypto.randomUUID(), name: "Demo Employee", title: "Owner", salary: 10000 }];
-        if (sheetName === "Invoices") data = [{ id: crypto.randomUUID(), customer_id: "", total: 90.5, created_at: new Date().toISOString(), items: "[]" }];
-        XLSX.utils.book_append_sheet(this.workbook, XLSX.utils.json_to_sheet(data), sheetName);
-        filled = true;
-      }
-    }
-    await this.persistAllToExcel();
-    await this.loadAllFromExcel();
-    this.notify();
-    return { created: false, repaired, filled };
+  async ensureWorkbookAndSheetsWithData(_fillMock = false) {
+    // No-op light check to keep API compatibility for dev pages
+    this.ensureWorkbookIfNeeded(true)
+    return { created: false, repaired: false, filled: false }
   }
 
   getList(type: "products" | "customers" | "employees" | "invoices") {
@@ -215,7 +123,6 @@ class ExcelSheetManager {
       this.ensureWorkbookIfNeeded(true);
       console.log(`[excelSheetManager][add] Adding item to ${type}:`, item)
       this[type].push(item)
-      this.persistAllToExcel()
       this.notify()
       console.log(`[excelSheetManager][add] Item added to ${type} array and persisted`, item)
     } catch (e) {
@@ -231,7 +138,6 @@ class ExcelSheetManager {
       const idx = arr.findIndex((x: any) => x.id === id)
       if (idx !== -1) {
         arr[idx] = { ...arr[idx], ...patch }
-        this.persistAllToExcel()
         this.notify()
         console.log(`[excelSheetManager][update] Item updated in ${type}:`, arr[idx])
       } else {
@@ -250,7 +156,6 @@ class ExcelSheetManager {
       const idx = arr.findIndex((x: any) => x.id === id)
       if (idx !== -1) {
         arr.splice(idx, 1)
-        this.persistAllToExcel()
         this.notify()
         console.log(`[excelSheetManager][remove] Item removed from ${type}:`, id)
       } else {
