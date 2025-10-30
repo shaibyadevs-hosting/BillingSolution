@@ -1,11 +1,11 @@
 "use client"
-import { createClient } from "@/lib/supabase/server"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { useEffect, useState } from 'react';
 import { autoLoadExcelFromPublic, excelSheetManager } from '@/lib/utils/excel-sync-controller';
+import { createClient } from '@/lib/supabase/client';
 
 // Add this for now. Replace with a real config or store later.
 const getDatabaseType = () => typeof window !== 'undefined' && window.localStorage.getItem('databaseType') === 'supabase' ? 'supabase' : 'excel';
@@ -20,7 +20,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (dbType === 'excel') {
-      // Load and show Excel stats
       autoLoadExcelFromPublic().then(() => {
         const products = excelSheetManager.getList('products') || [];
         const customers = excelSheetManager.getList('customers') || [];
@@ -33,29 +32,28 @@ export default function DashboardPage() {
           invoicesCount: invoices.length,
           recentInvoices: invoices.slice(-5).reverse(),
           lowStockProducts: products.filter(p => (p.stock_quantity !== undefined && p.stock_quantity <= 10)),
-        })
-        setLoading(false)
-      }).catch((e) => { setLoading(false); });
+        });
+        setLoading(false);
+      }).catch(() => { setLoading(false); });
     } else if (dbType === 'supabase') {
-      // Async IIFE for Supabase code
       (async () => {
         setLoading(true);
-        const supabase = await createClient();
+        const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
         const { count: productsCount } = await supabase
-          .from("products").select("*", { count: "exact", head: true }).eq("user_id", user!.id);
+          .from("products").select("*", { count: "exact", head: true }).eq("user_id", user?.id);
         const { count: customersCount } = await supabase
-          .from("customers").select("*", { count: "exact", head: true }).eq("user_id", user!.id);
+          .from("customers").select("*", { count: "exact", head: true }).eq("user_id", user?.id);
         const { count: invoicesCount } = await supabase
-          .from("invoices").select("*", { count: "exact", head: true }).eq("user_id", user!.id);
+          .from("invoices").select("*", { count: "exact", head: true }).eq("user_id", user?.id);
         const { data: invoices } = await supabase
-          .from("invoices").select("total_amount").eq("user_id", user!.id).eq("status", "paid");
+          .from("invoices").select("total_amount").eq("user_id", user?.id).eq("status", "paid");
         const totalRevenue = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0;
         const { data: recentInvoices } = await supabase
           .from("invoices").select("id, invoice_number, total_amount, status, created_at, customers(name)")
-            .eq("user_id", user!.id).order("created_at", { ascending: false }).limit(5);
+            .eq("user_id", user?.id).order("created_at", { ascending: false }).limit(5);
         const { data: lowStockProducts } = await supabase
-          .from("products").select("id, name, stock_quantity").eq("user_id", user!.id).lte("stock_quantity", 10).limit(5);
+          .from("products").select("id, name, stock_quantity").eq("user_id", user?.id).lte("stock_quantity", 10).limit(5);
         setSbStats({
           totalRevenue, productsCount, customersCount, invoicesCount, recentInvoices, lowStockProducts
         });
