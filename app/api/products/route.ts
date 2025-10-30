@@ -35,6 +35,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const body = await request.json()
+  // Log incoming request for troubleshooting
+  console.log(`[API][products][POST] Incoming:`, { body, user: user.id })
   const { data: product, error } = await supabase
     .from("products")
     .insert({
@@ -53,8 +55,30 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const supabase = await createClient()
-  // Implement logic and logs as above if present
-  return NextResponse.json({ error: "Not implemented" }, { status: 501 })
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) {
+    console.error("[API][products][PUT] Unauthorized access")
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  const body = await request.json()
+  // Log incoming request for troubleshooting
+  console.log(`[API][products][PUT] Incoming:`, { body, user: user.id })
+  const { id, ...updateFields } = body
+  const { data: product, error } = await supabase
+    .from("products")
+    .update(updateFields)
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) {
+    console.error("[API][products][PUT] DB error:", error, "Input:", body, "User:", user.id)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  console.log(`[API][products][PUT] Updated product with id ${id} for user ${user.id}`)
+  return NextResponse.json({ product }, { status: 200 })
 }
 
 export async function DELETE(request: NextRequest) {
