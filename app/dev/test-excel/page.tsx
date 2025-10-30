@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 export default function TestExcelPage() {
   const [status, setStatus] = useState<string>("Idle")
   const [productsCount, setProductsCount] = useState<number>(0)
+  const [initResult, setInitResult] = useState<string>("");
 
   const refreshCounts = () => {
     try {
@@ -19,13 +20,21 @@ export default function TestExcelPage() {
   }
 
   const initExcel = async () => {
-    setStatus("Initializing Excel mode...")
+    setStatus("Checking/Creating Excel files via API...");
     try {
-      await excelSheetManager.initializeExcelMode()
-      setStatus("Excel mode initialized")
-      refreshCounts()
+      const res = await fetch("/api/ensure-excel-files");
+      const data = await res.json();
+      setInitResult(JSON.stringify(data));
+      if (Object.values(data).some((status) => status === "created")) {
+        setStatus("Excel files created and ready.");
+      } else {
+        setStatus("Excel files already exist.");
+      }
+      // Recheck file status
+      // (Refactor checkFiles as independent function so we can call here)
+      checkFiles();
     } catch (e: any) {
-      setStatus("Init failed: " + (e?.message || String(e)))
+      setStatus("Init failed: " + (e?.message || String(e)));
     }
   }
 
@@ -100,22 +109,20 @@ export default function TestExcelPage() {
   const [fileStatus, setFileStatus] = useState<{[key:string]:boolean}>({})
 
   // uses a public file endpoint in dev or simulate available files
-  useEffect(() => {
-    async function checkFiles() {
-      const statuses: {[key:string]:boolean} = {}
-      for (const fname of fileNames) {
-        // Now use /excel-test/<fname>
-        try {
-          const res = await fetch(`/excel-test/${fname}`, { method: 'HEAD' })
-          statuses[fname] = res.ok
-        } catch {
-          statuses[fname] = false
-        }
+  function checkFiles() {
+    const statuses: {[key:string]:boolean} = {};
+    Promise.all(fileNames.map(async (fname) => {
+      try {
+        const res = await fetch(`/excel-test/${fname}`, { method: 'HEAD' })
+        statuses[fname] = res.ok
+      } catch {
+        statuses[fname] = false
       }
-      setFileStatus(statuses)
-    }
-    checkFiles()
-  }, [])
+    })).then(() => setFileStatus(statuses));
+  }
+  useEffect(() => {
+    checkFiles();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -143,6 +150,7 @@ export default function TestExcelPage() {
             <div>Products Count: {productsCount}</div>
             <div>Excel Mode: {String(excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive())}</div>
           </div>
+          {initResult && (<pre className="text-xs">Init Result: {initResult}</pre>)}
           <div className="mb-4">
             <strong>Excel file status in public/excel-test/</strong>:
             <ul>

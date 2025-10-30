@@ -126,7 +126,12 @@ class ExcelSheetManager {
           console.log("[excelSheetManager] Persisted Excel to download (fallback).")
         } catch (de) {
           console.error("[excelSheetManager] Excel download (writeFile) failed", de)
-          throw new Error('Failed to trigger Excel file download: ' + (de && de.message ? de.message : JSON.stringify(de)))
+          throw new Error(
+            'Failed to trigger Excel file download: ' +
+            (de && typeof de === 'object' && 'message' in de
+              ? (de as any).message
+              : JSON.stringify(de))
+          )
         }
       }
     } catch (e) {
@@ -154,7 +159,7 @@ class ExcelSheetManager {
         this.workbook = XLSX.utils.book_new();
         // Add empty or mock sheets, if required
         for (const sheetName of defaultSheetNames) {
-          let data = [];
+          let data: any[] = [];
           if (fillMock) {
             if (sheetName === "Products") data = [{ id: crypto.randomUUID(), name: "Demo Widget", sku: "WM-1", category: "Demo", price: 45.5, cost_price: 20, stock_quantity: 10, unit: "piece", hsn_code: "9999", gst_rate: 18, is_active: true }];
             if (sheetName === "Customers") data = [{ id: crypto.randomUUID(), name: "Demo Customer", email: "demo@example.com", phone: "1234567890", gstin: "", address: "123 Main Road" }];
@@ -185,7 +190,7 @@ class ExcelSheetManager {
       // Optionally add mock data if sheet empty
       const rows = XLSX.utils.sheet_to_json(this.workbook.Sheets[sheetName]);
       if (fillMock && (!rows || rows.length === 0)) {
-        let data = [];
+        let data: any[] = [];
         if (sheetName === "Products") data = [{ id: crypto.randomUUID(), name: "Demo Widget", sku: "WM-1", category: "Demo", price: 45.5, cost_price: 20, stock_quantity: 10, unit: "piece", hsn_code: "9999", gst_rate: 18, is_active: true }];
         if (sheetName === "Customers") data = [{ id: crypto.randomUUID(), name: "Demo Customer", email: "demo@example.com", phone: "1234567890", gstin: "", address: "123 Main Road" }];
         if (sheetName === "Employees") data = [{ id: crypto.randomUUID(), name: "Demo Employee", title: "Owner", salary: 10000 }];
@@ -262,5 +267,16 @@ class ExcelSheetManager {
 }
 
 export const excelSheetManager = new ExcelSheetManager()
+
+export async function autoLoadExcelFromPublic() {
+  // For now, load Products - could extend for others
+  const url = "/excel-test/Products.xlsx";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+  const blob = await res.blob();
+  const file = new File([blob], "Products.xlsx", { type: blob.type });
+  await excelSheetManager.loadAllFromExcel(file);
+  excelSheetManager.setExcelMode(true);
+}
 
 

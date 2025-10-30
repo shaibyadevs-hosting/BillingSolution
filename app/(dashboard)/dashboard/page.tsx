@@ -3,8 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { useEffect } from 'react';
+import { autoLoadExcelFromPublic } from '@/lib/utils/excel-sync-controller';
 
-export default async function DashboardPage() {
+export default function DashboardPage() {
+  useEffect(() => {
+    autoLoadExcelFromPublic().catch((e) => console.error("Auto Excel public load error:", e));
+  }, []);
+
   const supabase = await createClient()
   const {
     data: { user },
