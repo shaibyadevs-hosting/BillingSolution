@@ -50,15 +50,25 @@ export function CustomerForm({ customer }: CustomerFormProps) {
 
     try {
       if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-        const id = customer?.id || crypto.randomUUID()
-        console.log('[CustomerForm] Excel mode enabled. Workbook present:', !!excelSheetManager.workbook, 'Current sheets:', excelSheetManager.workbook?.SheetNames)
-        if (customer?.id) {
-          excelSheetManager.update('customers', id, { ...formData, id })
-          console.log('[CustomerForm] Updated customer in Excel:', { ...formData, id })
-        } else {
-          excelSheetManager.add('customers', { ...formData, id })
-          console.log('[CustomerForm] Added customer in Excel:', { ...formData, id })
+        const id = customer?.id || crypto.randomUUID();
+        let excelResult = null;
+        try {
+          if (customer?.id) {
+            excelResult = excelSheetManager.update('customers', id, { ...formData, id })
+          } else {
+            excelResult = excelSheetManager.add('customers', { ...formData, id })
+          }
+        } catch (excelError) {
+          console.error('[CustomerForm] Excel add/update threw error:', excelError);
+          window.alert(
+            'Excel Save Failed: ' +
+            (excelError instanceof Error && excelError.message
+              ? excelError.message
+              : JSON.stringify(excelError))
+          );
+          throw excelError;
         }
+        console.log('[CustomerForm] Excel add/update result:', excelResult)
         toast({
           title: "Success",
           description: `Customer ${customer?.id ? "updated" : "created"} in Excel`,
@@ -118,10 +128,12 @@ export function CustomerForm({ customer }: CustomerFormProps) {
 
       router.refresh()
     } catch (error) {
-      console.error('[CustomerForm] Error in Excel/DB add/update:', error)
+      console.error('[CustomerForm] Error in Excel/DB add/update:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save customer",
+        description:
+          (error instanceof Error ? error.message : "Failed to save customer") +
+          (error && typeof error === 'object' ? '\n' + JSON.stringify(error) : ''),
         variant: "destructive",
       })
     } finally {

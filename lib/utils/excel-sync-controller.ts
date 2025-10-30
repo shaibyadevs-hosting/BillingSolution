@@ -110,17 +110,31 @@ class ExcelSheetManager {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(this.invoices), "Invoices")
       this.workbook = wb
       if (this.fh && 'createWritable' in this.fh) {
-        const writable = await this.fh.createWritable()
-        const out = XLSX.write(wb, { type: "array", bookType: "xlsx" })
-        await writable.write(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
-        await writable.close()
-        console.log("[excelSheetManager] Persisted Excel to file handle.")
+        try {
+          const writable = await this.fh.createWritable()
+          const out = XLSX.write(wb, { type: "array", bookType: "xlsx" })
+          await writable.write(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
+          await writable.close()
+          console.log("[excelSheetManager] Persisted Excel to file handle.")
+        } catch (fe) {
+          console.error("[excelSheetManager] File handle Excel write failed", fe)
+          throw new Error('Failed to write Excel file via File System Access API: ' + (fe && fe.message ? fe.message : JSON.stringify(fe)))
+        }
       } else {
-        XLSX.writeFile(wb, "BillingData.xlsx")
-        console.log("[excelSheetManager] Persisted Excel to download (fallback).")
+        try {
+          XLSX.writeFile(wb, "BillingData.xlsx")
+          console.log("[excelSheetManager] Persisted Excel to download (fallback).")
+        } catch (de) {
+          console.error("[excelSheetManager] Excel download (writeFile) failed", de)
+          throw new Error('Failed to trigger Excel file download: ' + (de && de.message ? de.message : JSON.stringify(de)))
+        }
       }
     } catch (e) {
-      console.error("[excelSheetManager] Persist error: ", e)
+      if (e instanceof Error) {
+        throw e
+      } else {
+        throw new Error('[excelSheetManager] persistAllToExcel unknown error: ' + JSON.stringify(e))
+      }
     }
   }
 

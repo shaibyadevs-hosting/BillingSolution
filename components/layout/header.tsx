@@ -14,7 +14,7 @@ import {
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
-import { excelSheetManager } from "@/lib/utils/excel-sheet-manager";
+import { excelSheetManager } from "@/lib/utils/excel-sync-controller";
 
 interface HeaderProps {
   title?: string
