@@ -1,7 +1,7 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, FileSpreadsheet } from "lucide-react"
+import { Plus, FileSpreadsheet, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { CustomersTable } from "@/components/features/customers/customers-table"
 import { toast } from "sonner"
@@ -66,6 +66,54 @@ export default function CustomersPage() {
     }
   }, [isExcel])
 
+  const handleAddMockCustomer = async () => {
+    try {
+      const rand = Math.floor(Math.random() * 10000)
+      const mockCustomer = {
+        id: crypto.randomUUID(),
+        name: `Mock Customer ${rand}`,
+        email: `user${rand}@example.com`,
+        phone: `9${Math.floor(100000000 + Math.random() * 899999999)}`,
+        gstin: `29${Math.floor(1000000000 + Math.random() * 8999999999)}${Math.floor(10 + Math.random() * 90)}`,
+        billing_address: `${rand} Street, Sector ${Math.floor(1 + Math.random() * 50)}, City`,
+        shipping_address: `${rand + 1} Street, Sector ${Math.floor(1 + Math.random() * 50)}, City`,
+        notes: `Mock customer generated at ${new Date().toLocaleString()}`,
+      }
+      
+      if (isExcel) {
+        await db.customers.put(mockCustomer as any)
+        // Trigger refresh by re-fetching
+        const list = await db.customers.toArray()
+        setCustomers(list)
+        toast.success(`Mock customer "${mockCustomer.name}" added!`)
+      } else {
+        // For Supabase mode, use API
+        const { createClient } = await import("@/lib/supabase/client")
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          toast.error("Not authenticated")
+          return
+        }
+        const { error } = await supabase.from("customers").insert({
+          ...mockCustomer,
+          user_id: user.id,
+        })
+        if (error) throw error
+        toast.success(`Mock customer "${mockCustomer.name}" added!`)
+        // Refresh data
+        const { data: dbCustomers } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+        setCustomers(dbCustomers || [])
+      }
+    } catch (error: any) {
+      toast.error("Failed to add mock customer: " + (error.message || error.toString()))
+    }
+  }
+
   // Excel import logic
   function ExcelImport() {
     const inputRef = useRef<HTMLInputElement | null>(null)
@@ -112,6 +160,15 @@ export default function CustomersPage() {
         </div>
         <div className="flex items-center gap-2">
           <ExcelImport />
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={handleAddMockCustomer}
+            title="Add a mock customer with random data"
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            Add Mock Customer
+          </Button>
           <Button asChild>
             <Link href="/customers/new">
               <Plus className="mr-2 h-4 w-4" />

@@ -67,8 +67,12 @@ export function Header({ title }: HeaderProps) {
 
   const handleSyncNow = async () => {
     try {
-      await storageManager.saveNowToExcel()
-    } catch (_) {}
+      const result = await storageManager.saveNowToExcel()
+      // The sync:saved or sync:error event will be dispatched by storageManager
+      // SyncStatus component will pick it up and display it
+    } catch (error: any) {
+      window.dispatchEvent(new CustomEvent('sync:error', { detail: { error: error?.message || 'Sync failed' } }))
+    }
   }
 
   return (

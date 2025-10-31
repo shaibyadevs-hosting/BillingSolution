@@ -12,19 +12,24 @@ class StorageManager {
     if (this.autoSaveTimer) clearTimeout(this.autoSaveTimer)
     this.autoSaveTimer = setTimeout(async () => {
       try {
-        const [products, customers, invoices, employees] = await Promise.all([
+        const [products, customers, invoices, employees, invoiceItems] = await Promise.all([
           db.products.toArray(),
           db.customers.toArray(),
           db.invoices.toArray(),
           db.employees?.toArray?.() ?? Promise.resolve([]),
+          db.invoice_items?.toArray?.() ?? Promise.resolve([]),
         ])
+        let result
         if (await hasConnectedExcel()) {
-          await saveToConnectedExcel(products, customers, invoices, employees as any)
+          result = await saveToConnectedExcel(products, customers, invoices, employees as any, invoiceItems as any)
         } else {
-          await autoSaveExcel(products as any, invoices as any)
+          const ok = await autoSaveExcel(products as any, invoices as any)
+          result = { ok, counts: { products: products.length, customers: customers.length, invoices: invoices.length, employees: (employees as any[]).length, invoice_items: (invoiceItems as any[]).length } }
         }
-        window.dispatchEvent(new CustomEvent('sync:saved'))
-      } catch {}
+        window.dispatchEvent(new CustomEvent('sync:saved', { detail: result }))
+      } catch (error: any) {
+        window.dispatchEvent(new CustomEvent('sync:error', { detail: { error: error?.message || 'Unknown error' } }))
+      }
     }, 500)
   }
 
@@ -80,17 +85,26 @@ class StorageManager {
   }
 
   async saveNowToExcel() {
-    const [products, customers, invoices, employees] = await Promise.all([
+    const [products, customers, invoices, employees, invoiceItems] = await Promise.all([
       db.products.toArray(),
       db.customers.toArray(),
       db.invoices.toArray(),
       db.employees?.toArray?.() ?? Promise.resolve([]),
+      db.invoice_items?.toArray?.() ?? Promise.resolve([]),
     ])
+    let result
     if (await hasConnectedExcel()) {
-      return await saveToConnectedExcel(products, customers, invoices, employees as any)
+      result = await saveToConnectedExcel(products, customers, invoices, employees as any, invoiceItems as any)
+    } else {
+      const ok = await autoSaveExcel(products as any, invoices as any)
+      result = { ok, counts: { products: products.length, customers: customers.length, invoices: invoices.length, employees: (employees as any[]).length, invoice_items: (invoiceItems as any[]).length } }
     }
-    const ok = await autoSaveExcel(products as any, invoices as any)
-    return { ok, counts: { products: products.length, customers: customers.length, invoices: invoices.length, employees: (employees as any[]).length } }
+    if (result.ok) {
+      window.dispatchEvent(new CustomEvent('sync:saved', { detail: result }))
+    } else {
+      window.dispatchEvent(new CustomEvent('sync:error', { detail: result }))
+    }
+    return result
   }
 }
 
