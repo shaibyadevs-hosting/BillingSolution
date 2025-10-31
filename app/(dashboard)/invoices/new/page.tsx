@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 import { InvoiceForm } from "@/components/features/invoices/invoice-form"
-import { fetchCustomers } from "@/lib/api/customers"
-import { fetchProducts } from "@/lib/api/products"
+import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function NewInvoicePage() {
@@ -18,29 +16,25 @@ export default function NewInvoicePage() {
     (async () => {
       if (isExcel) {
         try {
-          const [cust, prod] = await Promise.all([
-            fetchCustomers(),
-            fetchProducts(),
+          const [cust, prod, inv] = await Promise.all([
+            db.customers.toArray(),
+            db.products.toArray(),
+            db.invoices.toArray(),
           ])
-          console.log('[NewInvoice][Excel] customers:', cust.length, 'products:', prod.length)
+          console.log('[NewInvoice][Dexie] customers:', cust.length, 'products:', prod.length)
           setCustomers(cust || [])
           setProducts(prod || [])
           setSettings({
             invoice_prefix: 'INV',
-            next_invoice_number: (excelSheetManager.getList('invoices')?.length || 0) + 1,
+            next_invoice_number: (inv?.length || 0) + 1,
             default_gst_rate: 18,
             place_of_supply: null,
           })
         } catch (e) {
-          console.error('[NewInvoice][Excel] API fetch failed, fallback to in-memory lists', e)
-          setCustomers(excelSheetManager.getList('customers') || [])
-          setProducts(excelSheetManager.getList('products') || [])
-          setSettings({
-            invoice_prefix: 'INV',
-            next_invoice_number: (excelSheetManager.getList('invoices')?.length || 0) + 1,
-            default_gst_rate: 18,
-            place_of_supply: null,
-          })
+          console.error('[NewInvoice][Dexie] load failed', e)
+          setCustomers([])
+          setProducts([])
+          setSettings({ invoice_prefix: 'INV', next_invoice_number: 1, default_gst_rate: 18, place_of_supply: null })
         }
       } else {
         const supabase = createClient()

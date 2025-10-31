@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import Link from "next/link"
 import { InvoicesTable } from "@/components/features/invoices/invoices-table"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller";
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 
@@ -29,7 +28,7 @@ export default function InvoicesPage() {
             setInvoices(list || [])
           } catch (e) {
             console.error('[InvoicesPage][Dexie] load failed:', e)
-            setInvoices([...excelSheetManager.getList('invoices')])
+            setInvoices([])
           }
         } else {
           const supabase = createClient()
