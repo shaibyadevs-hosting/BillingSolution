@@ -7,81 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    const invoice = excelSheetManager.getList("invoices").find((i: any) => i.id === params.id)
-    if (!invoice) return <div>Invoice Not Found (Excel)</div>
-    const customer = excelSheetManager.getList("customers").find((c: any) => c.id === invoice.customer_id)
-    // items can be within invoice.items in Excel schema
-    const items = invoice.items || []
-    // ...Render Excel invoice detail using same UI as DB version but with Excel data...
-    // You may want to copy the JSX below and feed it Excel attributes
-    return (
-      <div className="mx-auto max-w-5xl space-y-6">
-        {/* Header and fields copying from DB JSX */}
-        <div className="flex items-center gap-4">
-          <Button asChild variant="outline" className="bg-transparent">
-            <Link href="/invoices">
-              <ArrowLeft className="mr-2 h-4 w-4" />Back to Invoices
-            </Link>
-          </Button>
-        </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>Invoice #{invoice.invoice_number} ({invoice.status})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-2 gap-8">
-              <div>
-                <h2 className="font-semibold">Customer</h2>
-                <p>{customer?.name || '--'}</p>
-                <p className="text-muted-foreground text-sm">{customer?.email}</p>
-                <p className="text-muted-foreground text-sm">{customer?.phone}</p>
-              </div>
-              <div>
-                <h2 className="font-semibold">Invoice Details</h2>
-                <div>Invoice Date: {invoice.invoice_date}</div>
-                <div>Due: {invoice.due_date || '--'}</div>
-                <div>Subtotal: ₹{invoice.subtotal?.toFixed(2)}</div>
-                <div>Total: ₹{invoice.total_amount?.toFixed(2)}</div>
-                <div>Status: {invoice.status}</div>
-              </div>
-            </div>
-            <div className="mt-6">
-              <h3 className="font-semibold">Line Items</h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Unit Price</TableHead>
-                    <TableHead>Discount %</TableHead>
-                    <TableHead>GST %</TableHead>
-                    <TableHead>Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((item: any) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.description}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>{item.unit_price}</TableCell>
-                      <TableCell>{item.discount_percent}</TableCell>
-                      <TableCell>{item.gst_rate}</TableCell>
-                      <TableCell>₹{item.line_total ? item.line_total.toFixed(2) : ''}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   const supabase = await createClient()
   const {
     data: { user },
