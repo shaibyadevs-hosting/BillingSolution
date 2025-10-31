@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/ui/toaster"
+import { SyncStatus } from "@/components/sync-status"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -38,6 +39,9 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         {children}
+        <div className="fixed bottom-3 right-3 rounded-md border bg-background/80 px-3 py-2 shadow">
+          <SyncStatus />
+        </div>
         <Toaster />
         <Analytics />
       </body>
