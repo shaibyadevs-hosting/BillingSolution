@@ -24,7 +24,7 @@ export function ExcelConnector() {
         {last && <span className="ml-2 text-muted-foreground">Last save: {last}</span>}
       </div>
       <div className="flex gap-2">
-        <Button type="button" onClick={async () => { const ok = await connectExcelFile(); setConnected(ok || await hasConnectedExcel()) }}>Connect Excel…</Button>
+        <Button type="button" onClick={async () => { const ok = await connectExcelFile(); const state = ok || await hasConnectedExcel(); setConnected(state); window.dispatchEvent(new CustomEvent('sync:connected', { detail: state })); }}>Connect Excel…</Button>
         <Button type="button" variant="outline" className="bg-transparent" disabled={saving} onClick={async () => { setSaving(true); await storageManager.saveNowToExcel(); setSaving(false) }}>Save Now</Button>
       </div>
     </div>

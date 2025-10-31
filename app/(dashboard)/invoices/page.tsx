@@ -14,10 +14,7 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true)
   const isExcel = getDatabaseType() === 'excel'
 
-  const initializedRef = useRef(false)
   useEffect(() => {
-    if (initializedRef.current) return
-    initializedRef.current = true
     (async () => {
       try {
         setLoading(true)

@@ -15,8 +15,10 @@ export function SyncStatus() {
       if (mounted) setConnected(ok)
     })()
     const onSaved = () => setSavedAt(new Date().toLocaleTimeString())
+    const onConnected = async () => setConnected(await hasConnectedExcel())
     window.addEventListener('sync:saved', onSaved)
-    return () => { mounted = false; window.removeEventListener('sync:saved', onSaved) }
+    window.addEventListener('sync:connected', onConnected as any)
+    return () => { mounted = false; window.removeEventListener('sync:saved', onSaved); window.removeEventListener('sync:connected', onConnected as any) }
   }, [])
 
   return (

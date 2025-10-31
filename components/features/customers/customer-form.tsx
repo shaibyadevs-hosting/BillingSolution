@@ -67,6 +67,20 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     <Card>
       <CardContent className="p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" className="bg-transparent" onClick={() => {
+              const rand = Math.floor(Math.random()*10000)
+              setFormData({
+                name: `Mock Customer ${rand}`,
+                email: `user${rand}@example.com`,
+                phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
+                gstin: "",
+                billing_address: `Street ${rand}, City`,
+                shipping_address: `Street ${rand+1}, City`,
+                notes: "",
+              })
+            }}>Fill Mock</Button>
+          </div>
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">

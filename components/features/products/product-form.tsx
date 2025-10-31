@@ -81,6 +81,23 @@ export function ProductForm({ product }: ProductFormProps) {
     <Card>
       <CardContent className="p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" className="bg-transparent" onClick={() => {
+              setFormData({
+                name: `Mock Product ${Math.floor(Math.random()*10000)}`,
+                description: "",
+                sku: `SKU-${Math.floor(Math.random()*100000)}`,
+                category: "Demo",
+                price: Number((Math.random()*500+10).toFixed(2)),
+                cost_price: Number((Math.random()*300+5).toFixed(2)),
+                stock_quantity: Math.floor(Math.random()*50)+1,
+                unit: "piece",
+                hsn_code: "9999",
+                gst_rate: 18,
+                is_active: true,
+              })
+            }}>Fill Mock</Button>
+          </div>
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">
