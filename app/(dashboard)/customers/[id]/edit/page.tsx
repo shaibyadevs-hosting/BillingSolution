@@ -1,5 +1,6 @@
 import { CustomerForm } from "@/components/features/customers/customer-form"
 import { notFound } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
 
 export default async function EditCustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
