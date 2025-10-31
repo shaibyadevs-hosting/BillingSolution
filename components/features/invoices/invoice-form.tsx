@@ -16,8 +16,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
-import { db } from "@/lib/db/dexie"
-import { createInvoice } from "@/lib/api/invoices";
+import { storageManager } from "@/lib/storage-manager"
 
 interface Customer {
   id: string
@@ -40,49 +39,17 @@ interface BusinessSettings {
   place_of_supply: string | null
 }
 
-interface LineItem {
-  id: string
-  product_id: string | null
-  description: string
-  quantity: number
-  unit_price: number
-  discount_percent: number
-  gst_rate: number
-  hsn_code: string
-}
-
 interface InvoiceFormProps {
   customers: Customer[]
   products: Product[]
   settings: BusinessSettings | null
 }
 
-// Sync the Invoice and LineItem shape across Excel/DB
-interface Invoice {
-  id: string;
-  user_id?: string;
-  customer_id: string;
-  invoice_number: string;
-  invoice_date: string;
-  due_date?: string;
-  status: string;
-  is_gst_invoice: boolean;
-  subtotal: number;
-  cgst_amount: number;
-  sgst_amount: number;
-  igst_amount: number;
-  total_amount: number;
-  notes?: string;
-  terms?: string;
-  created_at?: string;
-  updated_at?: string;
-  items: LineItem[];
-}
-
+// LineItem interface for form state
 interface LineItem {
   id: string;
   invoice_id?: string;
-  product_id: string|null;
+  product_id: string | null;
   description: string;
   quantity: number;
   unit_price: number;
@@ -218,10 +185,13 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
     setIsLoading(true);
     try {
       const t = calculateTotals();
+      const invoiceId = crypto.randomUUID();
       const invoiceData = {
+        id: invoiceId,
         customer_id: customerId,
         invoice_number: invoiceNumber,
         invoice_date: invoiceDate,
+        due_date: dueDate || undefined,
         status: "draft",
         is_gst_invoice: isGstInvoice,
         subtotal: t.subtotal,
@@ -229,26 +199,42 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
         sgst_amount: t.sgst,
         igst_amount: t.igst,
         total_amount: t.total,
-        notes,
-        terms,
+        notes: notes || undefined,
+        terms: terms || undefined,
         created_at: new Date().toISOString(),
-      } as any;
-      const items = lineItems.map((li) => ({
-        id: li.id,
-        product_id: li.product_id,
-        description: li.description,
-        quantity: li.quantity,
-        unit_price: li.unit_price,
-        discount_percent: li.discount_percent,
-        gst_rate: li.gst_rate,
-        hsn_code: li.hsn_code,
-      }));
+      };
+      
+      // Calculate line totals and GST for each item
+      const items = lineItems.map((li) => {
+        const calc = calculateLineItem({
+          unitPrice: li.unit_price,
+          discountPercent: li.discount_percent,
+          gstRate: li.gst_rate,
+          quantity: li.quantity,
+        });
+        return {
+          id: li.id,
+          invoice_id: invoiceId,
+          product_id: li.product_id || null,
+          description: li.description,
+          quantity: li.quantity,
+          unit_price: li.unit_price,
+          discount_percent: li.discount_percent,
+          gst_rate: li.gst_rate,
+          hsn_code: li.hsn_code || null,
+          line_total: calc.taxableAmount + calc.gstAmount,
+          gst_amount: calc.gstAmount,
+          created_at: new Date().toISOString(),
+        };
+      });
+      
       console.log('[InvoiceForm] Saving invoice', invoiceData, items);
-      await createInvoice(invoiceData, items);
-      toast({ title: "Success", description: "Invoice created in Excel" });
+      await storageManager.addInvoice(invoiceData, items);
+      toast({ title: "Success", description: "Invoice created successfully" });
       router.push("/invoices");
       router.refresh();
     } catch (error) {
+      console.error('[InvoiceForm] Error saving invoice:', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save invoice",
