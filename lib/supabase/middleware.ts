@@ -52,7 +52,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Role-based protections
-  const adminOnlyPaths = ["/admin", "/settings"]
+  const adminOnlyPaths = ["/admin"]
   const isAdminOnlyRoute = adminOnlyPaths.some((path) => request.nextUrl.pathname.startsWith(path))
 
   if (user && isAdminOnlyRoute && role !== "admin") {

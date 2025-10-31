@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
 import { storageManager } from "@/lib/storage-manager"
+import { SyncStatus } from "@/components/sync-status"
 
 interface HeaderProps {
   title?: string
@@ -93,6 +94,8 @@ export function Header({ title }: HeaderProps) {
         <Button variant="outline" className="bg-transparent" onClick={handleSyncNow}>
           Sync Now
         </Button>
+
+        <SyncStatus />
 
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative">

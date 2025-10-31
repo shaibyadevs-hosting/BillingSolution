@@ -12,8 +12,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/dexie-client"
-import { v4 as uuidv4 } from "uuid"
-import { createCustomer, updateCustomer } from "@/lib/api/customers";
 
 interface Customer {
   id?: string
@@ -49,7 +47,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const id = customer?.id || uuidv4()
+      const id = customer?.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now()))
       await db.customers!.put({ id, ...formData } as any)
       toast({ title: "Success", description: customer?.id ? "Customer updated" : "Customer created" })
       router.push(customer?.id ? `/customers/${customer.id}` : "/customers")
