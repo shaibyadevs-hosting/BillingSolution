@@ -1,7 +1,5 @@
 "use client"
 
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
-
 export function getDatabaseType(): 'excel' | 'supabase' {
   if (typeof window === 'undefined') return 'excel'
   const v = window.localStorage.getItem('databaseType')
@@ -9,10 +7,7 @@ export function getDatabaseType(): 'excel' | 'supabase' {
 }
 
 export function ensureExcelModeFromSetting() {
-  const type = getDatabaseType()
-  if (type === 'excel' && (!excelSheetManager.isExcelModeActive || !excelSheetManager.isExcelModeActive())) {
-    try { excelSheetManager.setExcelMode(true) } catch {}
-  }
+  // No-op in new Dexie+Excel FS architecture
 }
 
 export function isExcelMode() {
