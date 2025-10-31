@@ -17,7 +17,6 @@ import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
 import { db } from "@/lib/db/dexie"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 import { createInvoice } from "@/lib/api/invoices";
 
 interface Customer {
