@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
@@ -15,7 +15,10 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true)
   const isExcel = getDatabaseType() === 'excel'
 
+  const initializedRef = useRef(false)
   useEffect(() => {
+    if (initializedRef.current) return
+    initializedRef.current = true
     (async () => {
       try {
         setLoading(true)

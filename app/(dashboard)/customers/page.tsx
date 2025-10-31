@@ -16,7 +16,10 @@ export default function CustomersPage() {
   const [isLoading, setIsLoading] = useState(true)
   const isExcel = getDatabaseType() === 'excel'
 
+  const initializedRef = useRef(false)
   useEffect(() => {
+    if (initializedRef.current) return
+    initializedRef.current = true
     if (isExcel) {
       (async () => {
         try {

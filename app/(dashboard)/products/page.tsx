@@ -14,7 +14,10 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
+  const initializedRef = useRef(false)
   useEffect(() => {
+    if (initializedRef.current) return
+    initializedRef.current = true
     const isExcel = getDatabaseType() === 'excel'
     if (isExcel) {
       // Prefer the Excel API so we read from the data folder
