@@ -75,11 +75,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Auth routes - redirect to dashboard if already authenticated
-  const authPaths = ["/auth/login", "/auth/signup"]
-  const isAuthRoute = authPaths.some((path) => request.nextUrl.pathname.startsWith(path))
-
-  if (isAuthRoute && user) {
+  // Auth routes - allow access to login page even if authenticated (user can see their status)
+  // Only redirect if explicitly trying to access signup while logged in
+  const isSignupRoute = request.nextUrl.pathname.startsWith("/auth/signup")
+  
+  if (isSignupRoute && user) {
     const url = request.nextUrl.clone()
     url.pathname = role === "admin" ? "/admin/analytics" : "/dashboard"
     return NextResponse.redirect(url)

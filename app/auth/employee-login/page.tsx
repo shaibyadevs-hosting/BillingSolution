@@ -62,6 +62,7 @@ export default function EmployeeLoginPage() {
         localStorage.setItem("currentStoreId", store.id)
         localStorage.setItem("authType", "employee")
 
+        toast.success("Logged in as Employee")
         router.push("/dashboard")
         router.refresh()
       } else {
@@ -99,6 +100,7 @@ export default function EmployeeLoginPage() {
         localStorage.setItem("currentStoreId", store.id)
         localStorage.setItem("authType", "employee")
 
+        toast.success("Logged in as Employee")
         router.push("/dashboard")
         router.refresh()
       }
