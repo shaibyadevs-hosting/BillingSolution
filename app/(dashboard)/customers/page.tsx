@@ -5,7 +5,7 @@ import { Plus, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
 import { CustomersTable } from "@/components/features/customers/customers-table"
 import { toast } from "sonner"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
+// excel-sync-controller removed; Dexie is the source of truth
 // Don't import createClient unless needed
 // import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
@@ -32,22 +32,12 @@ export default function CustomersPage() {
           setCustomers(list)
         } catch {
           console.error('[CustomersPage][Dexie] load failed')
-          setCustomers([...excelSheetManager.getList('customers')])
+          setCustomers([])
         } finally {
           setIsLoading(false)
         }
       })()
-      const unsub = excelSheetManager.subscribe(async () => {
-        try {
-          const list = await db.customers.toArray()
-          console.log('[CustomersPage][Dexie][sub] fetched', list?.length || 0)
-          setCustomers(list)
-        } catch (e) {
-          console.error('[CustomersPage][Dexie][sub] load failed:', e)
-          setCustomers([...excelSheetManager.getList('customers')])
-        }
-      })
-      return unsub
+      
     } else {
       // Only import and use Supabase when NOT in Excel mode
       import("@/lib/supabase/client").then(({ createClient }) => {
@@ -88,9 +78,7 @@ export default function CustomersPage() {
         const res = await importCustomersFromExcel(e.target.files[0])
         if (!res.success) throw new Error(res.errors[0] || "Import failed")
         toast.success("Customers imported!")
-        if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-          // Could refresh list here, but subscriber above should handle it
-        }
+        
       } catch (error: any) {
         toast.error("Import failed: " + (error.message || error.toString()))
       } finally {
