@@ -73,7 +73,7 @@ export default function CustomerVerifyPage() {
         setStatus("success")
         setMessage("Login successful! Redirecting...")
         setTimeout(() => {
-          router.push("/customer/dashboard")
+          router.push("/customer/purchases")
         }, 1500)
       } catch (error: any) {
         setStatus("error")

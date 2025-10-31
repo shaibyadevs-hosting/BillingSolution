@@ -46,7 +46,7 @@ export async function updateSession(request: NextRequest) {
   const isProtectedRoute = protectedPaths.some((path) => request.nextUrl.pathname.startsWith(path))
   
   // Customer routes
-  const isCustomerRoute = request.nextUrl.pathname.startsWith("/customer")
+  const isCustomerRoute = request.nextUrl.pathname.startsWith("/customer/")
   // Employee routes (same as admin routes for now)
   const isEmployeeRoute = request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/products") || request.nextUrl.pathname.startsWith("/invoices") || request.nextUrl.pathname.startsWith("/customers")
 
