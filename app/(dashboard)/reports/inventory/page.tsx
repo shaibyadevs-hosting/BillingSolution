@@ -6,24 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Download } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 export default function InventoryReportPage() {
-  const isExcel = excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive();
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
-  useEffect(() => {
-    if (isExcel) {
-      setProducts([...excelSheetManager.getList("products")]);
-      setLoading(false);
-      const unsub = excelSheetManager.subscribe(() => setProducts([...excelSheetManager.getList("products")]));
-      return unsub;
-    } else {
-      fetchInventoryData();
-    }
-  }, [isExcel]);
+  useEffect(() => { fetchInventoryData() }, [])
 
   const fetchInventoryData = async () => {
     try {

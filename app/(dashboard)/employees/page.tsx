@@ -10,7 +10,6 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 interface Employee {
   id: string
@@ -29,21 +28,9 @@ export default function EmployeesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-      setEmployees([...excelSheetManager.getList('employees')])
-      const unsub = excelSheetManager.subscribe(() => setEmployees([...excelSheetManager.getList('employees')]))
-      return unsub
-    }
-    // else: fetch and set with existing Supabase method for DB mode
-  }, [])
+  useEffect(() => { fetchEmployees() }, [])
 
   const fetchEmployees = async () => {
-    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-      setEmployees([...excelSheetManager.getList('employees')])
-      setIsLoading(false)
-      return
-    }
     try {
       const supabase = createClient()
       const { data, error } = await supabase.from("employees").select("*").order("created_at", { ascending: false })
@@ -62,12 +49,6 @@ export default function EmployeesPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-      excelSheetManager.remove('employees', id)
-      setEmployees(employees.filter(e => e.id !== id))
-      toast({ title: "Success", description: "Employee removed from Excel" })
-      return
-    }
     if (!confirm("Are you sure?")) return
 
     try {
@@ -87,7 +68,7 @@ export default function EmployeesPage() {
     }
   }
 
-  // Excel import logic
+  // Excel import logic placeholder removed for now
   function ExcelImport() {
     const inputRef = useRef<HTMLInputElement | null>(null)
     const [importing, setImporting] = useState(false)
@@ -96,16 +77,7 @@ export default function EmployeesPage() {
       if (!e.target.files?.[0]) return
       setImporting(true)
       try {
-        const { importEmployeesFromExcel } = await import("@/lib/utils/excel-import")
-        const { syncExcelWithDexieAndSupabase } = await import("@/lib/utils/excel-sync-controller")
-        const res = await importEmployeesFromExcel(e.target.files[0])
-        if (!res.success) throw new Error(res.errors[0] || "Import failed")
-        await syncExcelWithDexieAndSupabase(
-          (typeof window !== "undefined" && (localStorage.getItem("storageMode") as any)) || "database"
-        )
-        toast({ title: "Import success", description: "Employees imported!" })
-      } catch (error: any) {
-        toast({ title: "Import failed", description: error.message || error.toString(), variant: "destructive" })
+        toast({ title: "Import not configured", description: "Excel import disabled in this build" })
       } finally {
         setImporting(false)
         if (inputRef.current) inputRef.current.value = ""
