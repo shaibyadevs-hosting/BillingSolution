@@ -5,7 +5,7 @@ import { Plus, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
 import { ProductsTable } from "@/components/features/products/products-table"
 import { toast } from "sonner"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
+// excel-sync-controller removed; Dexie is the source of truth
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
@@ -26,28 +26,16 @@ export default function ProductsPage() {
           setIsLoading(true)
           const list = await db.products.toArray()
           console.log('[ProductsPage][Dexie] fetched', list?.length || 0, 'products')
-          if (!list || list.length === 0) {
-            toast.warning('No products found in data/Products.xlsx')
-          }
+          if (!list || list.length === 0) { toast.warning('No products found') }
           setProducts(list)
         } catch (e) {
           console.error('[ProductsPage][Dexie] load failed:', e)
-          setProducts([...excelSheetManager.getList('products')])
+          
         } finally {
           setIsLoading(false)
         }
       })()
-      const unsub = excelSheetManager.subscribe(async () => {
-        try {
-          const list = await db.products.toArray()
-          console.log('[ProductsPage][Dexie][sub] fetched', list?.length || 0)
-          setProducts(list)
-        } catch (e) {
-          console.error('[ProductsPage][Dexie][sub] load failed:', e)
-          setProducts([...excelSheetManager.getList('products')])
-        }
-      })
-      return unsub
+      
     } else {
       const fetchData = async () => {
         setIsLoading(true)
@@ -79,9 +67,7 @@ export default function ProductsPage() {
         const res = await importProductsFromExcel(e.target.files[0])
         if (!res.success) throw new Error(res.errors[0] || "Import failed")
         toast.success("Products imported!")
-        if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-          // Subscriber should update table
-        }
+        
       } catch (error: any) {
         toast.error("Import failed: " + (error.message || error.toString()))
       } finally {

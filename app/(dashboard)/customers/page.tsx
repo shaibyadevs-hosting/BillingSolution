@@ -32,6 +32,7 @@ export default function CustomersPage() {
           setCustomers(list)
         } catch {
           console.error('[CustomersPage][Dexie] load failed')
+          toast.error('Failed to load customers')
           setCustomers([])
         } finally {
           setIsLoading(false)
