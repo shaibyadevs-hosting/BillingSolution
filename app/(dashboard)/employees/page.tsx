@@ -85,21 +85,41 @@ export default function EmployeesPage() {
   }
 
   const handleAddMockEmployee = async () => {
-    const rand = Math.floor(Math.random()*10000)
-    const employee: any = {
-      id: crypto.randomUUID(),
-      name: `Employee ${rand}`,
-      email: `emp${rand}@example.com`,
-      phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
-      role: rand % 5 === 0 ? 'admin' : 'employee',
-      salary: Math.floor(Math.random()*50000)+20000,
-      joining_date: new Date().toISOString(),
-      is_active: true,
+    try {
+      // Get current store
+      const currentStoreId = localStorage.getItem("currentStoreId")
+      if (!currentStoreId) {
+        toast({ title: "Error", description: "No store selected. Please create a store first.", variant: "destructive" })
+        return
+      }
+
+      const rand = Math.floor(Math.random()*10000)
+      const name = `Employee ${rand}`
+      
+      // Generate employee ID
+      const { generateEmployeeId } = await import("@/lib/utils/employee-id")
+      const employeeId = await generateEmployeeId(currentStoreId, name)
+      
+      const employee: any = {
+        id: crypto.randomUUID(),
+        name,
+        email: `emp${rand}@example.com`,
+        phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
+        role: rand % 5 === 0 ? 'admin' : 'employee',
+        salary: Math.floor(Math.random()*50000)+20000,
+        joining_date: new Date().toISOString(),
+        is_active: true,
+        employee_id: employeeId,
+        password: employeeId, // Default password = employee ID
+        store_id: currentStoreId,
+      }
+      await storageManager.addEmployee(employee)
+      const list = await db.employees.toArray()
+      setEmployees(list as any)
+      toast({ title: "Success", description: `Mock employee "${employee.name}" (ID: ${employeeId}) added. Password: ${employeeId}` })
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to add employee", variant: "destructive" })
     }
-    await storageManager.addEmployee(employee)
-    const list = await db.employees.toArray()
-    setEmployees(list as any)
-    toast({ title: "Success", description: `Mock employee "${employee.name}" added` })
   }
 
   // Excel import logic
@@ -202,8 +222,9 @@ export default function EmployeesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredEmployees.map((emp) => (
+                  {filteredEmployees.map((emp: any) => (
                     <TableRow key={emp.id}>
+                      <TableCell className="font-mono font-medium">{emp.employee_id || "N/A"}</TableCell>
                       <TableCell className="font-medium">{emp.name}</TableCell>
                       <TableCell>{emp.email}</TableCell>
                       <TableCell>{emp.phone}</TableCell>
