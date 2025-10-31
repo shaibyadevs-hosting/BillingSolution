@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,6 +42,8 @@ interface InvoiceFormProps {
   customers: Customer[]
   products: Product[]
   settings: BusinessSettings | null
+  storeId?: string | null
+  employeeId?: string
 }
 
 // LineItem interface for form state
@@ -60,14 +62,23 @@ interface LineItem {
   created_at?: string;
 }
 
-export function InvoiceForm({ customers, products, settings }: InvoiceFormProps) {
+export function InvoiceForm({ customers, products, settings, storeId, employeeId }: InvoiceFormProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
-
-  const [invoiceNumber, setInvoiceNumber] = useState(
-    `${settings?.invoice_prefix || "INV"}-${String(settings?.next_invoice_number || 1).padStart(4, "0")}`,
-  )
+  const [invoiceNumber, setInvoiceNumber] = useState("")
+  
+  useEffect(() => {
+    // Generate invoice number on mount if we have store/employee
+    if (storeId && employeeId) {
+      import("@/lib/utils/invoice-number").then(({ generateInvoiceNumber }) => {
+        generateInvoiceNumber(storeId, employeeId).then(num => setInvoiceNumber(num))
+      })
+    } else {
+      // Fallback to old format
+      setInvoiceNumber(`${settings?.invoice_prefix || "INV"}-${String(settings?.next_invoice_number || 1).padStart(4, "0")}`)
+    }
+  }, [storeId, employeeId, settings])
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0])
   const [dueDate, setDueDate] = useState("")
   const [customerId, setCustomerId] = useState("")
@@ -201,6 +212,9 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
         notes: notes || undefined,
         terms: terms || undefined,
         created_at: new Date().toISOString(),
+        store_id: storeId || undefined,
+        employee_id: employeeId || undefined,
+        created_by_employee_id: employeeId || undefined,
       };
       
       // Calculate line totals and GST for each item

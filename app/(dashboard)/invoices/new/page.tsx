@@ -5,12 +5,30 @@ import { createClient } from "@/lib/supabase/client"
 import { InvoiceForm } from "@/components/features/invoices/invoice-form"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
+import { useStore } from "@/lib/utils/store-context"
 
 export default function NewInvoicePage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [settings, setSettings] = useState<any>(null)
+  const [storeId, setStoreId] = useState<string | null>(null)
+  const [employeeId, setEmployeeId] = useState<string>("ADMN")
+  const { currentStore } = useStore()
   const isExcel = getDatabaseType() === 'excel'
+  
+  useEffect(() => {
+    if (currentStore) {
+      setStoreId(currentStore.id)
+      // Get employee ID from session (to be set when employee logs in)
+      const empSession = localStorage.getItem("employeeSession")
+      if (empSession) {
+        try {
+          const session = JSON.parse(empSession)
+          setEmployeeId(session.employeeId || "ADMN")
+        } catch {}
+      }
+    }
+  }, [currentStore])
 
   useEffect(() => {
     (async () => {

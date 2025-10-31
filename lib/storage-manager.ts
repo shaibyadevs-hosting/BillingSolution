@@ -74,7 +74,13 @@ class StorageManager {
 
   async addInvoice(invoice: any, items: any[]) {
     const invoiceId = invoice.id || crypto.randomUUID()
-    await db.invoices.put({ ...invoice, id: invoiceId })
+    // Generate invoice number if not provided and we have store/employee context
+    let invoiceNumber = invoice.invoice_number
+    if (!invoiceNumber && invoice.store_id && invoice.employee_id) {
+      const { generateInvoiceNumber } = await import("./utils/invoice-number")
+      invoiceNumber = await generateInvoiceNumber(invoice.store_id, invoice.employee_id)
+    }
+    await db.invoices.put({ ...invoice, id: invoiceId, invoice_number: invoiceNumber || invoice.invoice_number })
     // Save invoice items
     if (items && items.length > 0) {
       const invoiceItems = items.map(item => ({
