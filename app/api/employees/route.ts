@@ -95,8 +95,74 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const supabase = await createClient()
-  // Implement logic and logs as above if present
-  return NextResponse.json({ error: "Not implemented" }, { status: 501 })
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) {
+    console.error("[API][employees][PUT] Unauthorized access")
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Check if user is admin
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  const role = profile?.role || "admin"
+  if (role !== "admin") {
+    console.error("[API][employees][PUT] Non-admin access attempted")
+    return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 })
+  }
+
+  const body = await request.json()
+  const { id, ...updateData } = body
+
+  if (!id) {
+    return NextResponse.json({ error: "Employee ID required" }, { status: 400 })
+  }
+
+  // Verify employee belongs to this admin
+  const { data: existingEmployee } = await supabase
+    .from("employees")
+    .select("store_id, user_id")
+    .eq("id", id)
+    .single()
+
+  if (!existingEmployee || existingEmployee.user_id !== user.id) {
+    return NextResponse.json({ error: "Employee not found or access denied" }, { status: 404 })
+  }
+
+  // Verify store belongs to this admin if store_id is being updated
+  if (updateData.store_id && updateData.store_id !== existingEmployee.store_id) {
+    const { data: store } = await supabase
+      .from("stores")
+      .select("admin_user_id")
+      .eq("id", updateData.store_id)
+      .single()
+    
+    if (!store || store.admin_user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden: Store does not belong to this admin" }, { status: 403 })
+    }
+  }
+
+  const { data: employee, error } = await supabase
+    .from("employees")
+    .update(updateData)
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("[API][employees][PUT] DB error:", error, "Input:", body, "User:", user.id)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  console.log(`[API][employees][PUT] Updated employee with id ${id} for user ${user.id}`)
+  return NextResponse.json({ employee }, { status: 200 })
 }
 
 export async function DELETE(request: NextRequest) {

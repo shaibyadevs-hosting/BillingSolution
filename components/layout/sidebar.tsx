@@ -27,6 +27,7 @@ import { useUserRole } from "@/lib/hooks/use-user-role"
 const adminNavigation = [
   { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   { name: "Employees", href: "/employees", icon: UserCog },
+  { name: "Employee Analytics", href: "/employees/analytics", icon: BarChart3 },
   { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },
 ]

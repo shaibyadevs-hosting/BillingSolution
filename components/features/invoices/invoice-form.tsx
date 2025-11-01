@@ -71,9 +71,16 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
   useEffect(() => {
     // Generate invoice number on mount if we have store/employee
     if (storeId && employeeId) {
-      import("@/lib/utils/invoice-number").then(({ generateInvoiceNumber }) => {
-        generateInvoiceNumber(storeId, employeeId).then(num => setInvoiceNumber(num))
-      })
+      const isExcel = typeof window !== 'undefined' && localStorage.getItem('databaseType') !== 'supabase'
+      if (isExcel) {
+        import("@/lib/utils/invoice-number").then(({ generateInvoiceNumber }) => {
+          generateInvoiceNumber(storeId, employeeId).then(num => setInvoiceNumber(num))
+        })
+      } else {
+        import("@/lib/utils/invoice-number-supabase").then(({ generateInvoiceNumberSupabase }) => {
+          generateInvoiceNumberSupabase(storeId, employeeId).then(num => setInvoiceNumber(num))
+        })
+      }
     } else {
       // Fallback to old format
       setInvoiceNumber(`${settings?.invoice_prefix || "INV"}-${String(settings?.next_invoice_number || 1).padStart(4, "0")}`)

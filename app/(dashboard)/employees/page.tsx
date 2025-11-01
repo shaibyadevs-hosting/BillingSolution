@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Plus, FileSpreadsheet, Search, Edit2, Trash2, Sparkles, Key } from "lucide-react"
+import { Plus, FileSpreadsheet, Search, Edit2, Trash2, Sparkles, Key, Eye } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -219,13 +219,13 @@ export default function EmployeesPage() {
   )
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-4 md:p-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Employees</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Employees</h1>
           <p className="text-muted-foreground">Manage your team members</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <ExcelImport />
           <Button type="button" variant="outline" onClick={handleAddMockEmployee} title="Add a mock employee">
             <Sparkles className="mr-2 h-4 w-4" /> Add Mock Employee
@@ -257,8 +257,8 @@ export default function EmployeesPage() {
           ) : filteredEmployees.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No employees found</div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
+            <div className="overflow-x-auto -mx-4 md:mx-0">
+              <Table className="min-w-[800px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Employee ID</TableHead>
@@ -310,8 +310,13 @@ export default function EmployeesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" asChild>
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="ghost" size="icon" asChild title="View Details">
+                            <Link href={`/employees/${emp.id}`}>
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          <Button variant="ghost" size="icon" asChild title="Edit">
                             <Link href={`/employees/${emp.id}/edit`}>
                               <Edit2 className="h-4 w-4" />
                             </Link>

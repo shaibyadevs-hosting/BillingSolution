@@ -49,6 +49,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
     salary: employee?.salary?.toString() || "",
     joining_date: employee?.joining_date ? new Date(employee.joining_date).toISOString().split('T')[0] : "",
     is_active: employee?.is_active !== undefined ? employee.is_active : true,
+    password: employee?.password || "",
   })
 
   useEffect(() => {
@@ -76,7 +77,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
       }
 
       let employeeId = employee?.employee_id
-      let password = employee?.password
+      let password = formData.password || employee?.password
 
       // Generate employee ID if creating new employee
       if (!employee?.id) {
@@ -84,63 +85,11 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           const { generateEmployeeId } = await import("@/lib/utils/employee-id")
           employeeId = await generateEmployeeId(storeId, formData.name)
         } else {
-          // For Supabase, generate employee ID similar to Excel mode
-          const supabase = createClient()
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) throw new Error("Unauthorized")
-
-          const { data: store } = await supabase.from("stores").select("store_code").eq("id", storeId).single()
-          if (!store) {
-            throw new Error("Store not found")
-          }
-
-          const storeCode = store.store_code.toUpperCase().slice(0, 2).padEnd(2, "X")
-          
-          // Try sequential IDs: STORE_CODE + 01, 02, ... 99
-          let candidate: string | null = null
-          for (let i = 1; i <= 99; i++) {
-            const candidateId = `${storeCode}${String(i).padStart(2, "0")}`
-            // Check if this ID already exists for this store
-            const { data: existing } = await supabase
-              .from("employees")
-              .select("id")
-              .eq("store_id", storeId)
-              .eq("employee_id", candidateId)
-              .limit(1)
-            
-            if (!existing || existing.length === 0) {
-              candidate = candidateId
-              break
-            }
-          }
-          
-          if (!candidate) {
-            // Fallback: First 3 chars of name + 1 digit
-            const namePart = formData.name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3).padEnd(3, "X")
-            for (let i = 0; i <= 9; i++) {
-              const candidateId = `${namePart}${i}`
-              const { data: existing } = await supabase
-                .from("employees")
-                .select("id")
-                .eq("store_id", storeId)
-                .eq("employee_id", candidateId)
-                .limit(1)
-              
-              if (!existing || existing.length === 0) {
-                candidate = candidateId
-                break
-              }
-            }
-          }
-          
-          if (!candidate) {
-            // Last resort: random 4-char alphanumeric
-            candidate = Math.random().toString(36).substring(2, 6).toUpperCase()
-          }
-          
-          employeeId = candidate
+          // For Supabase, use shared utility
+          const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
+          employeeId = await generateEmployeeIdSupabase(storeId, formData.name)
         }
-        password = employeeId // Default password = employee ID
+        password = password || employeeId // Default password = employee ID if not provided
       }
 
       const employeeData: any = {
@@ -178,24 +127,29 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
         }
 
         if (employee?.id) {
-          // Update existing employee
-          const { error } = await supabase
-            .from("employees")
-            .update({
-              name: employeeData.name,
-              email: employeeData.email,
-              phone: employeeData.phone,
-              role: employeeData.role,
-              salary: employeeData.salary,
-              joining_date: employeeData.joining_date,
-              is_active: employeeData.is_active,
-              employee_id: employeeData.employee_id,
-              password: employeeData.password,
-            })
-            .eq("id", employee.id)
-            .eq("user_id", user.id)
+          // Update existing employee via API
+          const updateData = {
+            name: employeeData.name,
+            email: employeeData.email,
+            phone: employeeData.phone,
+            role: employeeData.role,
+            salary: employeeData.salary,
+            joining_date: employeeData.joining_date,
+            is_active: employeeData.is_active,
+            employee_id: employeeData.employee_id,
+            ...(formData.password && { password: employeeData.password }),
+          }
+
+          const response = await fetch("/api/employees", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: employee.id, ...updateData }),
+          })
           
-          if (error) throw error
+          if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || "Failed to update employee")
+          }
         } else {
           // Create new employee via API
           const response = await fetch("/api/employees", {
@@ -325,6 +279,22 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
                 onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })}
               />
             </div>
+
+            {employee?.id && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="text"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Leave empty to keep current password"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Default password is the Employee ID. Leave empty to keep current password.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">
