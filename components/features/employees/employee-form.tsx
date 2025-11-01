@@ -1,0 +1,354 @@
+"use client"
+
+import type React from "react"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent } from "@/components/ui/card"
+import { createClient } from "@/lib/supabase/client"
+import { useToast } from "@/hooks/use-toast"
+import { storageManager } from "@/lib/storage-manager"
+import { getDatabaseType } from "@/lib/utils/db-mode"
+import { useStore } from "@/lib/utils/store-context"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+
+interface Employee {
+  id?: string
+  name: string
+  email: string
+  phone?: string | null
+  role: string
+  salary?: number | null
+  joining_date?: string | null
+  is_active: boolean
+  employee_id?: string | null
+  password?: string | null
+  store_id?: string | null
+}
+
+interface EmployeeFormProps {
+  employee?: Employee
+}
+
+export function EmployeeForm({ employee }: EmployeeFormProps) {
+  const router = useRouter()
+  const { toast } = useToast()
+  const { currentStore } = useStore()
+  const [isLoading, setIsLoading] = useState(false)
+  const isExcel = getDatabaseType() === 'excel'
+
+  const [formData, setFormData] = useState({
+    name: employee?.name || "",
+    email: employee?.email || "",
+    phone: employee?.phone || "",
+    role: employee?.role || "employee",
+    salary: employee?.salary?.toString() || "",
+    joining_date: employee?.joining_date ? new Date(employee.joining_date).toISOString().split('T')[0] : "",
+    is_active: employee?.is_active !== undefined ? employee.is_active : true,
+  })
+
+  useEffect(() => {
+    if (!currentStore && !employee?.store_id) {
+      toast({
+        title: "No Store Selected",
+        description: "Please select a store before adding an employee",
+        variant: "destructive",
+      })
+      router.push("/settings/store")
+    }
+  }, [currentStore, employee?.store_id, router, toast])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    try {
+      if (!currentStore && !employee?.store_id) {
+        throw new Error("No store selected. Please select a store first.")
+      }
+
+      const storeId = currentStore?.id || employee?.store_id || localStorage.getItem("currentStoreId")
+      if (!storeId) {
+        throw new Error("No store selected. Please select a store first.")
+      }
+
+      let employeeId = employee?.employee_id
+      let password = employee?.password
+
+      // Generate employee ID if creating new employee
+      if (!employee?.id) {
+        if (isExcel) {
+          const { generateEmployeeId } = await import("@/lib/utils/employee-id")
+          employeeId = await generateEmployeeId(storeId, formData.name)
+        } else {
+          // For Supabase, generate employee ID similar to Excel mode
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) throw new Error("Unauthorized")
+
+          const { data: store } = await supabase.from("stores").select("store_code").eq("id", storeId).single()
+          if (!store) {
+            throw new Error("Store not found")
+          }
+
+          const storeCode = store.store_code.toUpperCase().slice(0, 2).padEnd(2, "X")
+          
+          // Try sequential IDs: STORE_CODE + 01, 02, ... 99
+          let candidate: string | null = null
+          for (let i = 1; i <= 99; i++) {
+            const candidateId = `${storeCode}${String(i).padStart(2, "0")}`
+            // Check if this ID already exists for this store
+            const { data: existing } = await supabase
+              .from("employees")
+              .select("id")
+              .eq("store_id", storeId)
+              .eq("employee_id", candidateId)
+              .limit(1)
+            
+            if (!existing || existing.length === 0) {
+              candidate = candidateId
+              break
+            }
+          }
+          
+          if (!candidate) {
+            // Fallback: First 3 chars of name + 1 digit
+            const namePart = formData.name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3).padEnd(3, "X")
+            for (let i = 0; i <= 9; i++) {
+              const candidateId = `${namePart}${i}`
+              const { data: existing } = await supabase
+                .from("employees")
+                .select("id")
+                .eq("store_id", storeId)
+                .eq("employee_id", candidateId)
+                .limit(1)
+              
+              if (!existing || existing.length === 0) {
+                candidate = candidateId
+                break
+              }
+            }
+          }
+          
+          if (!candidate) {
+            // Last resort: random 4-char alphanumeric
+            candidate = Math.random().toString(36).substring(2, 6).toUpperCase()
+          }
+          
+          employeeId = candidate
+        }
+        password = employeeId // Default password = employee ID
+      }
+
+      const employeeData: any = {
+        id: employee?.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now())),
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || null,
+        role: formData.role,
+        salary: formData.salary ? parseFloat(formData.salary) : null,
+        joining_date: formData.joining_date || new Date().toISOString(),
+        is_active: formData.is_active,
+        employee_id: employeeId,
+        password: password || employeeId,
+        store_id: storeId,
+      }
+
+      if (isExcel) {
+        await storageManager.updateEmployee(employeeData)
+      } else {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          throw new Error("Unauthorized")
+        }
+
+        // Verify store belongs to this admin
+        const { data: store } = await supabase
+          .from("stores")
+          .select("admin_user_id")
+          .eq("id", storeId)
+          .single()
+        
+        if (!store || store.admin_user_id !== user.id) {
+          throw new Error("Store does not belong to this admin")
+        }
+
+        if (employee?.id) {
+          // Update existing employee
+          const { error } = await supabase
+            .from("employees")
+            .update({
+              name: employeeData.name,
+              email: employeeData.email,
+              phone: employeeData.phone,
+              role: employeeData.role,
+              salary: employeeData.salary,
+              joining_date: employeeData.joining_date,
+              is_active: employeeData.is_active,
+              employee_id: employeeData.employee_id,
+              password: employeeData.password,
+            })
+            .eq("id", employee.id)
+            .eq("user_id", user.id)
+          
+          if (error) throw error
+        } else {
+          // Create new employee via API
+          const response = await fetch("/api/employees", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(employeeData),
+          })
+          
+          if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || "Failed to create employee")
+          }
+        }
+      }
+
+      toast({ 
+        title: "Success", 
+        description: employee?.id 
+          ? "Employee updated successfully" 
+          : `Employee created with ID: ${employeeId}. Password: ${password || employeeId}` 
+      })
+      router.push("/employees")
+      router.refresh()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save employee",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" className="bg-transparent" onClick={() => {
+              const rand = Math.floor(Math.random()*10000)
+              setFormData({
+                name: `Employee ${rand}`,
+                email: `emp${rand}@example.com`,
+                phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
+                role: "employee",
+                salary: String(Math.floor(Math.random()*50000)+20000),
+                joining_date: new Date().toISOString().split('T')[0],
+                is_active: true,
+              })
+            }}>Fill Mock</Button>
+          </div>
+          
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">
+                Employee Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="name"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., John Doe"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">
+                Email <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="employee@example.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="+91 98765 43210"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="role">
+                Role <span className="text-destructive">*</span>
+              </Label>
+              <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="employee">Employee</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="salary">Salary</Label>
+              <Input
+                id="salary"
+                type="number"
+                value={formData.salary}
+                onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                placeholder="50000"
+                min="0"
+                step="0.01"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="joining_date">Joining Date</Label>
+              <Input
+                id="joining_date"
+                type="date"
+                value={formData.joining_date}
+                onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="is_active"
+              checked={formData.is_active}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked === true })}
+            />
+            <Label htmlFor="is_active" className="cursor-pointer">
+              Active Employee
+            </Label>
+          </div>
+
+          <div className="flex gap-4">
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "Saving..." : employee ? "Update Employee" : "Create Employee"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()} disabled={isLoading}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+

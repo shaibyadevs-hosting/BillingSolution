@@ -120,6 +120,29 @@ export default function EmployeesPage() {
         return
       }
 
+      // Verify store belongs to admin
+      let store: any = null
+      if (isExcel) {
+        store = await db.stores.get(currentStoreId)
+        if (!store || !store.admin_user_id) {
+          toast({ title: "Error", description: "Store must be created by an admin", variant: "destructive" })
+          return
+        }
+      } else {
+        const supabase = createClient()
+        const { data: storeData } = await supabase
+          .from("stores")
+          .select("*, user_profiles!stores_admin_user_id_fkey(role)")
+          .eq("id", currentStoreId)
+          .single()
+        
+        if (!storeData || !storeData.admin_user_id) {
+          toast({ title: "Error", description: "Store must be created by an admin", variant: "destructive" })
+          return
+        }
+        store = storeData
+      }
+
       const rand = Math.floor(Math.random()*10000)
       const name = `Employee ${rand}`
       
@@ -132,7 +155,7 @@ export default function EmployeesPage() {
         name,
         email: `emp${rand}@example.com`,
         phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
-        role: rand % 5 === 0 ? 'admin' : 'employee',
+        role: 'employee', // Always employee, not admin
         salary: Math.floor(Math.random()*50000)+20000,
         joining_date: new Date().toISOString(),
         is_active: true,

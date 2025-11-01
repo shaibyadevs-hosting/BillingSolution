@@ -58,6 +58,10 @@ export default function StorePage() {
           const updated = await db.stores.get(currentStore.id)
           if (updated) setCurrentStore(updated)
           toast({ title: "Success", description: "Store updated successfully" })
+          // Wait a bit for state to update, then redirect
+          await new Promise(resolve => setTimeout(resolve, 500))
+          router.push("/dashboard")
+          router.refresh()
         } else {
           // Create new store
           const storeCode = generateStoreCode(formData.name)
@@ -74,11 +78,10 @@ export default function StorePage() {
           setCurrentStore(store)
           localStorage.setItem("currentStoreId", store.id)
           toast({ title: "Success", description: "Store created successfully" })
-          // Redirect to dashboard after store creation (admin can then go to employees)
-          setTimeout(() => {
-            router.push("/dashboard")
-            router.refresh()
-          }, 1000)
+          // Wait a bit for state to update, then redirect
+          await new Promise(resolve => setTimeout(resolve, 500))
+          router.push("/dashboard")
+          router.refresh()
         }
       } else {
         // Supabase mode
@@ -90,8 +93,30 @@ export default function StorePage() {
         }
         
         if (currentStore) {
-          // Update existing store (would need API route for this)
-          toast({ title: "Info", description: "Store update via API route (to be implemented)" })
+          // Update existing store
+          const { data, error: updateError } = await supabase
+            .from("stores")
+            .update({
+              name: formData.name,
+              address: formData.address,
+              gstin: formData.gstin,
+              phone: formData.phone,
+            })
+            .eq("id", currentStore.id)
+            .select()
+            .single()
+          
+          if (updateError) throw updateError
+          
+          if (data) {
+            setCurrentStore(data as any)
+            localStorage.setItem("currentStoreId", data.id)
+            toast({ title: "Success", description: "Store updated successfully" })
+            // Wait a bit for state to update, then redirect
+            await new Promise(resolve => setTimeout(resolve, 500))
+            router.push("/dashboard")
+            router.refresh()
+          }
         } else {
           // Create new store
           const storeCode = generateStoreCode(formData.name)
@@ -109,11 +134,10 @@ export default function StorePage() {
             setCurrentStore(data as any)
             localStorage.setItem("currentStoreId", data.id)
             toast({ title: "Success", description: "Store created successfully" })
-            // Redirect to dashboard after store creation (admin can then go to employees)
-            setTimeout(() => {
-              router.push("/dashboard")
-              router.refresh()
-            }, 1000)
+            // Wait a bit for state to update, then redirect
+            await new Promise(resolve => setTimeout(resolve, 500))
+            router.push("/dashboard")
+            router.refresh()
           }
         }
       }

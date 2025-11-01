@@ -1,5 +1,6 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Plus, FileSpreadsheet, Sparkles } from "lucide-react"
 import Link from "next/link"
@@ -10,10 +11,20 @@ import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { storageManager } from "@/lib/storage-manager"
+import { useUserRole } from "@/lib/hooks/use-user-role"
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter()
+  const { isAdmin, isLoading: roleLoading } = useUserRole()
+
+  // Redirect admin to analytics page
+  useEffect(() => {
+    if (!roleLoading && isAdmin) {
+      router.push("/admin/analytics")
+    }
+  }, [isAdmin, roleLoading, router])
 
   const initializedRef = useRef(false)
   useEffect(() => {

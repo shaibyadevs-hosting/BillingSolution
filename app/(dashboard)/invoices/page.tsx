@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Plus, FileSpreadsheet, Sparkles } from "lucide-react"
@@ -14,8 +15,16 @@ import { useUserRole } from "@/lib/hooks/use-user-role"
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const { isAdmin, isEmployee } = useUserRole()
+  const router = useRouter()
+  const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole()
   const isExcel = getDatabaseType() === 'excel'
+
+  // Redirect admin to analytics page
+  useEffect(() => {
+    if (!roleLoading && isAdmin) {
+      router.push("/admin/analytics")
+    }
+  }, [isAdmin, roleLoading, router])
 
   useEffect(() => {
     (async () => {

@@ -36,20 +36,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         
         // Only check store for admin users (not employees, they handle it differently)
         if ((userRole === "admin" || !profile) && authType !== "employee") {
-          const { data: stores } = await supabase
-            .from("stores")
-            .select("*")
-            .eq("admin_user_id", user.id)
-            .limit(1)
+          const isExcel = typeof window !== 'undefined' && localStorage.getItem('databaseType') !== 'supabase'
           
-          // If no store exists and not already on store page, redirect to store setup
-          if ((!stores || stores.length === 0) && !pathname?.includes("/settings/store")) {
-            router.push("/settings/store")
-          } else if (stores && stores.length > 0) {
-            // Store exists, save to localStorage
-            const store = stores[0]
-            localStorage.setItem("currentStoreId", store.id)
+          let hasStore = false
+          if (isExcel) {
+            // Excel mode - check Dexie
+            const { db } = await import("@/lib/dexie-client")
+            const stores = await db.stores.toArray()
+            hasStore = stores && stores.length > 0
+            if (hasStore) {
+              localStorage.setItem("currentStoreId", stores[0].id)
+            }
+          } else {
+            // Supabase mode
+            const { data: stores } = await supabase
+              .from("stores")
+              .select("*")
+              .eq("admin_user_id", user.id)
+              .limit(1)
+            
+            hasStore = stores && stores.length > 0
+            if (hasStore) {
+              localStorage.setItem("currentStoreId", stores[0].id)
+            }
           }
+          
+          // Only redirect to store setup if:
+          // 1. No store exists
+          // 2. Not already on the store setup page or settings pages
+          // 3. Trying to access main dashboard or other non-settings pages
+          if (!hasStore) {
+            // Allow access to store setup and settings pages
+            if (pathname?.includes("/settings/store") || pathname?.includes("/settings")) {
+              // Already on store setup page, allow it
+              return
+            }
+            // Redirect to store setup if on any other page
+            router.push("/settings/store")
+            return
+          }
+          
+          // Store exists - ensure currentStoreId is set in localStorage
+          // This is already done above, but just to be sure
         }
       }
     }

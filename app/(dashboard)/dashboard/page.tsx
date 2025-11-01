@@ -4,17 +4,27 @@ import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog }
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { db } from '@/lib/dexie-client';
 import { createClient } from '@/lib/supabase/client';
 import { getDatabaseType } from '@/lib/utils/db-mode';
 import { useUserRole } from '@/lib/hooks/use-user-role';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [excelStats, setExcelStats] = useState<any>(null);
   const [sbStats, setSbStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { isAdmin, isEmployee } = useUserRole();
+  const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole();
   const dbType = getDatabaseType();
+
+  // Redirect admin to analytics page
+  useEffect(() => {
+    if (!roleLoading && isAdmin) {
+      router.push("/admin/analytics");
+      return;
+    }
+  }, [isAdmin, roleLoading, router]);
 
   useEffect(() => {
     if (dbType === 'excel') {

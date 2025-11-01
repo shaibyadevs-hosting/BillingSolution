@@ -25,11 +25,8 @@ import { useUserRole } from "@/lib/hooks/use-user-role"
 
 // Navigation items for different user roles
 const adminNavigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Products", href: "/products", icon: Package },
-  { name: "Customers", href: "/customers", icon: Users },
+  { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   { name: "Employees", href: "/employees", icon: UserCog },
-  { name: "Invoices", href: "/invoices", icon: Receipt },
   { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },
 ]

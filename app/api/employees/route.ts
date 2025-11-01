@@ -63,6 +63,20 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
+  
+  // Verify store belongs to this admin
+  if (body.store_id) {
+    const { data: store } = await supabase
+      .from("stores")
+      .select("admin_user_id")
+      .eq("id", body.store_id)
+      .single()
+    
+    if (!store || store.admin_user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden: Store does not belong to this admin" }, { status: 403 })
+    }
+  }
+
   const { data: employee, error } = await supabase
     .from("employees")
     .insert({

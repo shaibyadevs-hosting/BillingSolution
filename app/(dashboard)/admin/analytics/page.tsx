@@ -17,6 +17,9 @@ import {
 } from "recharts"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { db } from "@/lib/dexie-client"
+import { getDatabaseType } from "@/lib/utils/db-mode"
+import { useUserRole } from "@/lib/hooks/use-user-role"
 
 interface AnalyticsData {
   totalRevenue: number
@@ -34,44 +37,50 @@ export default function AdminAnalyticsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
   const router = useRouter()
+  const { isAdmin, isLoading: roleLoading } = useUserRole()
+  const isExcel = getDatabaseType() === 'excel'
 
   useEffect(() => {
-    // Role guard then fetch
-    ;(async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        router.replace("/auth/login")
-        return
-      }
-      const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", user.id).single()
-      if ((profile as any)?.role !== "admin") {
-        router.replace("/dashboard")
-        return
-      }
+    // Role guard
+    if (!roleLoading && !isAdmin) {
+      router.replace("/dashboard")
+      return
+    }
+    if (isAdmin && !roleLoading) {
       fetchAnalytics()
-    })()
-  }, [])
+    }
+  }, [isAdmin, roleLoading, router])
 
   const fetchAnalytics = async () => {
     try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      setIsLoading(true)
+      let invoices: any[] = []
+      let customers: any[] = []
 
-      if (!user) return
+      if (isExcel) {
+        // Excel mode - fetch from Dexie
+        invoices = await db.invoices.toArray()
+        customers = await db.customers.toArray()
+      } else {
+        // Supabase mode
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
 
-      // Fetch invoices
-      const { data: invoices } = await supabase.from("invoices").select("*").eq("user_id", user.id)
+        if (!user) return
 
-      // Fetch customers
-      const { data: customers } = await supabase.from("customers").select("*").eq("user_id", user.id)
+        const [{ data: invData }, { data: custData }] = await Promise.all([
+          supabase.from("invoices").select("*").eq("user_id", user.id),
+          supabase.from("customers").select("*").eq("user_id", user.id),
+        ])
+
+        invoices = invData || []
+        customers = custData || []
+      }
 
       // Calculate metrics
-      const totalRevenue = invoices?.reduce((sum, inv) => sum + inv.total_amount, 0) || 0
+      const totalRevenue = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount || inv.total || 0), 0) || 0
       const totalInvoices = invoices?.length || 0
       const averageOrderValue = totalInvoices > 0 ? totalRevenue / totalInvoices : 0
       const totalCustomers = customers?.length || 0
@@ -111,8 +120,10 @@ export default function AdminAnalyticsPage() {
   const getMonthlySales = (invoices: any[]) => {
     const months: Record<string, number> = {}
     invoices.forEach((inv) => {
-      const month = new Date(inv.invoice_date).toLocaleString("default", { month: "short" })
-      months[month] = (months[month] || 0) + inv.total_amount
+      const date = inv.invoice_date || inv.created_at || new Date().toISOString()
+      const month = new Date(date).toLocaleString("default", { month: "short" })
+      const amount = Number(inv.total_amount || inv.total || 0)
+      months[month] = (months[month] || 0) + amount
     })
     return Object.entries(months).map(([month, sales]) => ({ month, sales }))
   }
