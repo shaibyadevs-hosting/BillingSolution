@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
 import { storageManager } from "@/lib/storage-manager"
+import { QuickCustomerForm } from "@/components/features/customers/quick-customer-form"
 
 interface Customer {
   id: string
@@ -44,6 +45,7 @@ interface InvoiceFormProps {
   settings: BusinessSettings | null
   storeId?: string | null
   employeeId?: string
+  onCustomersUpdate?: (customers: Customer[]) => void
 }
 
 // LineItem interface for form state
