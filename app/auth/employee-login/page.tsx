@@ -42,12 +42,28 @@ export default function EmployeeLoginPage() {
         const trimmedStoreName = storeName.trim()
         const upperStoreName = trimmedStoreName.toUpperCase()
         
-        // Try to find by name (case-insensitive using ilike) OR by store_code (exact match after trimming)
-        const { data: stores, error: storeError } = await supabase
+        // Try to find by name (case-insensitive using ilike) OR by store_code (exact match)
+        // First try by store_code (exact match)
+        let { data: stores, error: storeError } = await supabase
           .from("stores")
           .select("*")
-          .or(`name.ilike.%${trimmedStoreName}%,store_code.eq.${upperStoreName}`)
-          .limit(5) // Get multiple in case of matches to find the best one
+          .eq("store_code", upperStoreName)
+          .limit(5)
+        
+        // If not found by code, try by name (case-insensitive)
+        if ((!stores || stores.length === 0) && !storeError) {
+          const { data: storesByName, error: nameError } = await supabase
+            .from("stores")
+            .select("*")
+            .ilike("name", `%${trimmedStoreName}%`)
+            .limit(5)
+          
+          if (nameError) {
+            storeError = nameError
+          } else {
+            stores = storesByName
+          }
+        }
         
         if (storeError) {
           console.error("[EmployeeLogin] Error searching for store:", storeError)
@@ -68,11 +84,32 @@ export default function EmployeeLoginPage() {
         // If no exact match, try partial name match
         if (!store && stores && stores.length > 0) {
           store = stores[0] // Take first result as fallback
-          console.log("[EmployeeLogin] Using first store result:", {
+          console.log("[EmployeeLogin] Using first store result (partial match):", {
             id: store.id,
             name: store.name,
             code: store.store_code
           })
+        }
+        
+        if (!store || stores.length === 0) {
+          // Try to get all stores to show in error message
+          const { data: allStores } = await supabase
+            .from("stores")
+            .select("name, store_code")
+            .limit(10)
+          
+          const availableStores = allStores?.map(s => `${s.name} (code: ${s.store_code})`).join(', ') || "No stores found"
+          
+          console.error("[EmployeeLogin] Store not found in Supabase:", {
+            searched: trimmedStoreName,
+            availableStores: allStores
+          })
+          
+          throw new Error(
+            `Store not found: "${trimmedStoreName}".\n\n` +
+            `Available stores: ${availableStores}\n\n` +
+            `Please enter the exact Store Name or Store Code (e.g., "MYS1").`
+          )
         }
         
         if (store) {
@@ -100,24 +137,90 @@ export default function EmployeeLoginPage() {
           }
 
           // Find employee - ensure employee belongs to this store
+          const upperEmployeeId = employeeId.toUpperCase().trim()
+          console.log("[EmployeeLogin] Searching for employee:", {
+            employeeId: upperEmployeeId,
+            storeId: store.id,
+            storeName: store.name,
+          })
+          
+          // Query employees - check by employee_id and store_id
           const { data: employees, error: empError } = await supabase
             .from("employees")
-            .select("*, stores!inner(admin_user_id)")
-            .eq("employee_id", employeeId.toUpperCase())
+            .select("*")
+            .eq("employee_id", upperEmployeeId)
             .eq("store_id", store.id)
           
-          if (!empError && employees && employees.length > 0) {
-            const employee = employees[0]
+          console.log("[EmployeeLogin] Employee search results:", {
+            found: employees?.length || 0,
+            error: empError,
+            employees: employees?.map(e => ({
+              id: e.id,
+              employee_id: e.employee_id,
+              name: e.name,
+              store_id: e.store_id,
+              hasPassword: !!e.password,
+            }))
+          })
+          
+          if (empError) {
+            console.error("[EmployeeLogin] Error searching for employee:", empError)
+            throw new Error(`Employee lookup failed: ${empError.message}`)
+          }
+          
+          if (!employees || employees.length === 0) {
+            // Try to find employee without store_id filter to see if it exists
+            const { data: allEmployees } = await supabase
+              .from("employees")
+              .select("employee_id, name, store_id")
+              .eq("employee_id", upperEmployeeId)
+              .limit(5)
+            
+            console.error("[EmployeeLogin] Employee not found in store:", {
+              searchedEmployeeId: upperEmployeeId,
+              searchedStoreId: store.id,
+              foundEmployees: allEmployees,
+            })
+            
+            throw new Error(
+              `Employee "${upperEmployeeId}" not found in store "${store.name}" (${store.store_code}).\n\n` +
+              `Please verify:\n` +
+              `1. Employee ID is correct (case-insensitive)\n` +
+              `2. Employee belongs to this store\n` +
+              (allEmployees && allEmployees.length > 0 
+                ? `\nNote: Employee exists but may be in a different store.` 
+                : `\nNote: Employee "${upperEmployeeId}" not found in system.`)
+            )
+          }
+          
+          const employee = employees[0]
 
-            // Verify employee has a valid store_id that matches the store
-            if (!employee.store_id || employee.store_id !== store.id) {
-              throw new Error("Invalid employee-store association")
-            }
+          // Verify employee has a valid store_id that matches the store
+          if (!employee.store_id || employee.store_id !== store.id) {
+            console.error("[EmployeeLogin] Store ID mismatch:", {
+              employeeStoreId: employee.store_id,
+              expectedStoreId: store.id,
+            })
+            throw new Error("Invalid employee-store association")
+          }
 
-            // Check password
-            if (employee.password !== password && employee.employee_id !== password) {
-              throw new Error("Invalid password")
-            }
+          console.log("[EmployeeLogin] Employee found, checking password:", {
+            employeeId: employee.employee_id,
+            employeeName: employee.name,
+            hasPassword: !!employee.password,
+            passwordLength: employee.password?.length,
+          })
+
+          // Check password
+          const passwordMatches = employee.password === password || employee.employee_id === password
+          if (!passwordMatches) {
+            console.error("[EmployeeLogin] Password mismatch:", {
+              provided: password.length,
+              storedLength: employee.password?.length,
+              employeeIdFallback: employee.employee_id,
+            })
+            throw new Error("Invalid password. Please check your password or try using your Employee ID as password.")
+          }
 
             // Create session
             const session = {
@@ -136,7 +239,6 @@ export default function EmployeeLoginPage() {
             router.refresh()
             return // Success - exit early
           }
-        }
       } catch (supabaseError: any) {
         // Supabase lookup failed - continue to Excel fallback
         console.log("[EmployeeLogin] Supabase lookup failed, trying Excel:", supabaseError.message)
@@ -188,24 +290,61 @@ export default function EmployeeLoginPage() {
         }
 
         // Find employee by employee_id and store_id - ensure employee belongs to this store
+        const upperEmployeeId = employeeId.toUpperCase().trim()
+        console.log("[EmployeeLogin] Excel mode: Searching for employee:", {
+          employeeId: upperEmployeeId,
+          storeId: store.id,
+        })
+        
         const employees = await db.employees
-          .where("employee_id").equals(employeeId.toUpperCase())
+          .where("employee_id").equals(upperEmployeeId)
           .and(e => e.store_id === store.id)
           .toArray()
         
+        console.log("[EmployeeLogin] Excel mode: Employee search results:", {
+          found: employees.length,
+          employees: employees.map(e => ({
+            id: e.id,
+            employee_id: e.employee_id,
+            name: e.name,
+            store_id: e.store_id,
+            hasPassword: !!e.password,
+          }))
+        })
+        
         if (employees.length === 0) {
-          throw new Error("Employee not found or not associated with this store")
+          // Try to find employee without store filter
+          const allEmployees = await db.employees
+            .where("employee_id").equals(upperEmployeeId)
+            .toArray()
+          
+          console.error("[EmployeeLogin] Excel mode: Employee not found in store:", {
+            searchedEmployeeId: upperEmployeeId,
+            searchedStoreId: store.id,
+            foundInOtherStores: allEmployees.map(e => ({
+              employee_id: e.employee_id,
+              store_id: e.store_id,
+            }))
+          })
+          
+          throw new Error(
+            `Employee "${upperEmployeeId}" not found in store "${store.name}" (${store.store_code}).\n\n` +
+            `Please verify the employee ID and store match.`
+          )
         }
         const employee = employees[0]
 
         // Verify employee has a valid store_id that matches the store
         if (!employee.store_id || employee.store_id !== store.id) {
+          console.error("[EmployeeLogin] Excel mode: Store ID mismatch")
           throw new Error("Invalid employee-store association")
         }
 
         // Check password (simple comparison for now, should hash in production)
-        if (employee.password !== password && employee.employee_id !== password) {
-          throw new Error("Invalid password")
+        const passwordMatches = employee.password === password || employee.employee_id === password
+        if (!passwordMatches) {
+          console.error("[EmployeeLogin] Excel mode: Password mismatch")
+          throw new Error("Invalid password. Please check your password or try using your Employee ID as password.")
         }
 
         // Create session
@@ -240,7 +379,9 @@ export default function EmployeeLoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Employee Login</CardTitle>
-          <CardDescription>Enter your store name, employee ID, and password</CardDescription>
+          <CardDescription>
+            Enter your store name or store code, employee ID, and password to login
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
