@@ -37,36 +37,63 @@ export default function EmployeeDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { toast } = useToast()
-  const { isAdmin } = useUserRole()
+  const { isAdmin, isLoading: roleLoading } = useUserRole()
   const isExcel = getDatabaseType() === 'excel'
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [invoices, setInvoices] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (!isAdmin) {
+    // Wait for role check to complete
+    if (roleLoading) {
+      return
+    }
+
+    // In Excel mode, allow access (admin check happens client-side via useUserRole)
+    // In Supabase mode, require admin
+    if (!isExcel && !isAdmin) {
       router.push("/dashboard")
       return
     }
+
+    // Fetch employee data
     fetchEmployee()
-  }, [params.id, isAdmin, router])
+  }, [params.id, isAdmin, roleLoading, isExcel, router])
 
   const fetchEmployee = async () => {
     try {
       setIsLoading(true)
       if (isExcel) {
+        // Excel mode - fetch from Dexie
         const emp = await db.employees.get(params.id as string)
         if (!emp) {
+          console.error("[EmployeeDetail] Employee not found in Excel mode:", params.id)
           toast({ title: "Error", description: "Employee not found", variant: "destructive" })
           router.push("/employees")
           return
         }
-        setEmployee(emp as any)
+        
+        // Load store info if store_id exists
+        let storeInfo = null
+        if (emp.store_id) {
+          const store = await db.stores.get(emp.store_id)
+          if (store) {
+            storeInfo = { name: store.name, store_code: store.store_code }
+          }
+        }
+        
+        setEmployee({ 
+          ...emp as any,
+          stores: storeInfo
+        })
         
         // Fetch invoices created by this employee
-        const empInvoices = await db.invoices
-          .where("created_by_employee_id").equals(emp.employee_id || "")
-          .toArray()
+        // Try both employee_id and created_by_employee_id fields
+        const allInvoices = await db.invoices.toArray()
+        const empInvoices = allInvoices.filter((inv: any) => 
+          (inv.created_by_employee_id === emp.employee_id) || 
+          (inv.employee_id === emp.employee_id)
+        )
         setInvoices(empInvoices as any)
       } else {
         const supabase = createClient()
@@ -84,15 +111,28 @@ export default function EmployeeDetailPage() {
         setEmployee(emp as any)
         
         // Fetch invoices created by this employee
-        const { data: empInvoices } = await supabase
+        // Try both employee_id and created_by_employee_id columns
+        const { data: empInvoices, error: invoiceError } = await supabase
           .from("invoices")
           .select("*, customers(name)")
-          .eq("created_by_employee_id", emp.employee_id || "")
+          .or(`employee_id.eq.${emp.employee_id || ''},created_by_employee_id.eq.${emp.employee_id || ''}`)
           .order("created_at", { ascending: false })
+          .limit(10)
+        
+        if (invoiceError) {
+          console.warn("[EmployeeDetail] Error fetching invoices:", invoiceError)
+        }
         setInvoices(empInvoices || [])
       }
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to load employee", variant: "destructive" })
+    } catch (error: any) {
+      console.error("[EmployeeDetail] Error fetching employee:", error)
+      const errorMessage = error?.message || "Failed to load employee"
+      toast({ 
+        title: "Error", 
+        description: errorMessage,
+        variant: "destructive" 
+      })
+      // Don't redirect immediately - let user see the error
     } finally {
       setIsLoading(false)
     }
@@ -125,7 +165,7 @@ export default function EmployeeDetailPage() {
     }
   }
 
-  if (isLoading) {
+  if (roleLoading || isLoading) {
     return <div className="text-center py-8">Loading...</div>
   }
 

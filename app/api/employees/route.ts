@@ -77,17 +77,64 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Prepare insert data with proper formatting
+  const insertData: any = {
+    id: body.id || undefined, // Let Supabase generate if not provided
+    user_id: user.id,
+    name: body.name,
+    email: body.email || null,
+    phone: body.phone || null,
+    role: body.role || 'employee',
+    salary: body.salary ?? null,
+    joining_date: body.joining_date 
+      ? (typeof body.joining_date === 'string' && body.joining_date.includes('T')
+          ? body.joining_date.split('T')[0]
+          : body.joining_date)
+      : null,
+    is_active: body.is_active ?? true,
+    employee_id: body.employee_id || null,
+    password: body.password || null,
+    store_id: body.store_id || null,
+  }
+
+  // Check for unique constraint violation (store_id + employee_id)
+  if (insertData.store_id && insertData.employee_id) {
+    const { data: duplicate } = await supabase
+      .from("employees")
+      .select("id, employee_id")
+      .eq("store_id", insertData.store_id)
+      .eq("employee_id", insertData.employee_id)
+      .maybeSingle()
+    
+    if (duplicate) {
+      console.error("[API][employees][POST] Employee with same employee_id already exists in this store:", duplicate)
+      return NextResponse.json({ error: `Employee ID ${insertData.employee_id} already exists in this store` }, { status: 400 })
+    }
+  }
+
   const { data: employee, error } = await supabase
     .from("employees")
-    .insert({
-      ...body,
-      user_id: user.id,
-    })
+    .insert(insertData)
     .select()
     .single()
   if (error) {
-    console.error("[API][employees][POST] DB error:", error, "Input:", body, "User:", user.id)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("[API][employees][POST] DB error:", {
+      error,
+      errorDetails: {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      },
+      insertData: {
+        ...insertData,
+        password: insertData.password ? '[REDACTED]' : null,
+      },
+      userId: user.id
+    })
+    return NextResponse.json({ 
+      error: error.message || error.details || "Failed to create employee" 
+    }, { status: 500 })
   }
   console.log(`[API][employees][POST] Created employee with id ${employee?.id} for user ${user.id}`)
   return NextResponse.json({ employee }, { status: 201 })

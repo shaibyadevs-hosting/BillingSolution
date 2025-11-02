@@ -26,10 +26,12 @@ export default function LoginPage() {
   const [checkingAuth, setCheckingAuth] = useState(true)
   const router = useRouter()
 
-  // Check if user is already logged in
+  // Check if user is already logged in and redirect
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        const isExcel = getDatabaseType() === 'excel'
+        
         // Check for employee session first
         const authType = localStorage.getItem("authType")
         if (authType === "employee") {
@@ -42,10 +44,15 @@ export default function LoginPage() {
                 name: session.employeeName 
               })
               setCurrentRole("employee")
+              
+              console.log("[Login] Employee session found, redirecting to /dashboard")
+              router.push("/dashboard")
+              router.refresh()
               setCheckingAuth(false)
               return
             } catch (e) {
               // Invalid session
+              console.error("[Login] Invalid employee session:", e)
             }
           }
         }
@@ -61,17 +68,74 @@ export default function LoginPage() {
             .eq("id", user.id)
             .single()
           
+          const userRole = profile?.role || "admin"
+          
           setCurrentUser({ email: user.email, name: profile?.full_name || user.email })
-          setCurrentRole(profile?.role || "admin")
+          setCurrentRole(userRole)
+          
+          console.log("[Login] Authenticated user detected, role:", userRole)
+          
+          // Auto-redirect based on role
+          if (userRole === "admin" || !profile) {
+            console.log("[Login] Admin user authenticated, checking stores...")
+            
+            // Check for stores and redirect accordingly
+            if (isExcel) {
+              const stores = await db.stores.toArray()
+              console.log("[Login] Excel mode - Stores found:", stores?.length || 0)
+              if (!stores || stores.length === 0) {
+                console.log("[Login] No stores found, redirecting to store setup")
+                router.push("/settings/store")
+                router.refresh()
+                setCheckingAuth(false)
+                return
+              }
+              // Store exists
+              const store = stores[0]
+              localStorage.setItem("currentStoreId", store.id)
+              console.log("[Login] Redirecting admin to /admin/analytics")
+              router.push("/admin/analytics")
+            } else {
+              // Supabase mode
+              const { data: stores } = await supabase
+                .from("stores")
+                .select("*")
+                .eq("admin_user_id", user.id)
+                .limit(1)
+              
+              console.log("[Login] Supabase mode - Stores found:", stores?.length || 0)
+              
+              if (!stores || stores.length === 0) {
+                console.log("[Login] No stores found, redirecting to store setup")
+                router.push("/settings/store")
+                router.refresh()
+                setCheckingAuth(false)
+                return
+              }
+              
+              // Store exists
+              const store = stores[0]
+              localStorage.setItem("currentStoreId", store.id)
+              console.log("[Login] Redirecting admin to /admin/analytics")
+              router.push("/admin/analytics")
+            }
+            router.refresh()
+          } else {
+            // Public user
+            console.log("[Login] Public user authenticated, redirecting to /dashboard")
+            router.push("/dashboard")
+            router.refresh()
+          }
         }
       } catch (error) {
-        console.error("Error checking auth:", error)
+        console.error("[Login] Error checking auth:", error)
       } finally {
         setCheckingAuth(false)
       }
     }
 
     checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -106,12 +170,18 @@ export default function LoginPage() {
         // Show login success message with role
         toast.success(`Logged in as ${userRole.charAt(0).toUpperCase() + userRole.slice(1)}`)
         
+        console.log("[Login] User role detected:", userRole)
+        console.log("[Login] Database mode:", isExcel ? "Excel" : "Supabase")
+        
         // For admin users, check if they have a store
         if (userRole === "admin" || !profile) {
+          console.log("[Login] Admin user detected, checking for stores...")
           if (isExcel) {
             // Excel mode - check Dexie for stores
             const stores = await db.stores.toArray()
+            console.log("[Login] Excel mode - Stores found:", stores?.length || 0)
             if (!stores || stores.length === 0) {
+              console.log("[Login] No stores found, redirecting to store setup")
               router.push("/settings/store")
               router.refresh()
               return
@@ -119,7 +189,8 @@ export default function LoginPage() {
             // Store exists, save first store to localStorage
             const store = stores[0]
             localStorage.setItem("currentStoreId", store.id)
-            router.push("/dashboard")
+            console.log("[Login] Store found, redirecting admin to /admin/analytics")
+            router.push("/admin/analytics")
           } else {
             // Supabase mode - check Supabase for stores
             const { data: stores } = await supabase
@@ -128,23 +199,29 @@ export default function LoginPage() {
               .eq("admin_user_id", user.id)
               .limit(1)
             
+            console.log("[Login] Supabase mode - Stores found:", stores?.length || 0)
+            
             // If no store exists, redirect to store setup
             if (!stores || stores.length === 0) {
+              console.log("[Login] No stores found, redirecting to store setup")
               router.push("/settings/store")
               router.refresh()
               return
             }
             
-            // Store exists, save to localStorage and go to dashboard
+            // Store exists, save to localStorage and go to admin analytics
             const store = stores[0]
             localStorage.setItem("currentStoreId", store.id)
-            router.push("/dashboard")
+            console.log("[Login] Store found, redirecting admin to /admin/analytics")
+            router.push("/admin/analytics")
           }
         } else {
           // Public user
+          console.log("[Login] Public user detected, redirecting to /dashboard")
           router.push("/dashboard")
         }
       } else {
+        console.log("[Login] Warning: User not found after successful login")
         router.push("/dashboard")
       }
       router.refresh()

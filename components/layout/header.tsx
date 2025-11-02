@@ -29,7 +29,7 @@ export function Header({ title }: HeaderProps) {
   const [initials, setInitials] = useState<string>("U")
   const [storageMode, setStorageMode] = useState<"database" | "excel">("database");
   const [hasMounted, setHasMounted] = useState(false);
-  const { role, isAdmin, isEmployee, isPublic } = useUserRole();
+  const { role, isAdmin, isEmployee, isPublic, isLoading: roleLoading } = useUserRole();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -111,6 +111,16 @@ export function Header({ title }: HeaderProps) {
       <div className="flex items-center gap-4">{title && <h1 className="text-2xl font-bold">{title}</h1>}</div>
 
       <div className="flex items-center gap-4">
+        {/* Show role badge prominently */}
+        {role && !roleLoading && (
+          <Badge 
+            variant={isAdmin ? "default" : isEmployee ? "secondary" : "outline"} 
+            className="text-xs font-semibold"
+          >
+            {role.charAt(0).toUpperCase() + role.slice(1)}
+          </Badge>
+        )}
+
         {/* DropdownMenu for storage mode */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

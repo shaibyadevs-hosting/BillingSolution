@@ -7,20 +7,27 @@ import { useUserRole } from "@/lib/hooks/use-user-role"
 
 export default function NewEmployeePage() {
   const router = useRouter()
-  const { isAdmin, isEmployee, loading: roleLoading } = useUserRole()
+  const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole()
 
   useEffect(() => {
+    // Wait for role to be determined
+    if (roleLoading) {
+      return
+    }
+
     // Only admin can access this page
-    if (!roleLoading) {
-      if (isEmployee || !isAdmin) {
-        router.push("/employees")
-        return
-      }
+    if (isEmployee || !isAdmin) {
+      router.push("/employees")
+      return
     }
   }, [isAdmin, isEmployee, roleLoading, router])
 
   if (roleLoading) {
     return <div className="text-center py-8">Loading...</div>
+  }
+
+  if (!isAdmin) {
+    return <div className="text-center py-8">Access Denied. Admin access required.</div>
   }
 
   return (

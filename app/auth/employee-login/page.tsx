@@ -26,6 +26,82 @@ export default function EmployeeLoginPage() {
     setError(null)
 
     try {
+      // ALWAYS check Supabase FIRST for employee credentials
+      // This ensures login works from remote devices and incognito mode
+      const supabase = createClient()
+      
+      // Try Supabase first (even in Excel mode, employees should be in Supabase)
+      try {
+        // Find store by name in Supabase
+        const { data: stores, error: storeError } = await supabase
+          .from("stores")
+          .select("*")
+          .eq("name", storeName)
+          .limit(1)
+        
+        if (!storeError && stores && stores.length > 0) {
+          const store = stores[0]
+
+          // Verify store belongs to an admin
+          if (!store.admin_user_id) {
+            throw new Error("Access denied: Store must be created by an admin")
+          }
+
+          // Verify the admin_user_id exists and is an admin
+          const { data: adminProfile } = await supabase
+            .from("user_profiles")
+            .select("role")
+            .eq("id", store.admin_user_id)
+            .maybeSingle()
+          
+          if (!adminProfile || adminProfile.role !== "admin") {
+            throw new Error("Access denied: Store owner is not an admin")
+          }
+
+          // Find employee - ensure employee belongs to this store
+          const { data: employees, error: empError } = await supabase
+            .from("employees")
+            .select("*, stores!inner(admin_user_id)")
+            .eq("employee_id", employeeId.toUpperCase())
+            .eq("store_id", store.id)
+          
+          if (!empError && employees && employees.length > 0) {
+            const employee = employees[0]
+
+            // Verify employee has a valid store_id that matches the store
+            if (!employee.store_id || employee.store_id !== store.id) {
+              throw new Error("Invalid employee-store association")
+            }
+
+            // Check password
+            if (employee.password !== password && employee.employee_id !== password) {
+              throw new Error("Invalid password")
+            }
+
+            // Create session
+            const session = {
+              employeeId: employee.employee_id,
+              employeeName: employee.name,
+              storeId: store.id,
+              storeName: store.name,
+              storeCode: store.store_code,
+            }
+            localStorage.setItem("employeeSession", JSON.stringify(session))
+            localStorage.setItem("currentStoreId", store.id)
+            localStorage.setItem("authType", "employee")
+
+            toast.success("Logged in as Employee")
+            router.push("/dashboard")
+            router.refresh()
+            return // Success - exit early
+          }
+        }
+      } catch (supabaseError: any) {
+        // Supabase lookup failed - continue to Excel fallback
+        console.log("[EmployeeLogin] Supabase lookup failed, trying Excel:", supabaseError.message)
+      }
+
+      // Fallback to Excel mode if Supabase didn't work
       if (isExcel) {
         // Find store by name - ensure it belongs to an admin
         const stores = await db.stores.where("name").equals(storeName).toArray()
@@ -76,70 +152,9 @@ export default function EmployeeLoginPage() {
         router.push("/dashboard")
         router.refresh()
       } else {
-        // Supabase mode
-        const supabase = createClient()
-        // Find store - ensure it belongs to an admin
-        const { data: stores } = await supabase
-          .from("stores")
-          .select("*")
-          .eq("name", storeName)
-        
-        if (!stores || stores.length === 0) throw new Error("Store not found")
-        const store = stores[0]
-
-        // Verify store belongs to an admin (has admin_user_id)
-        if (!store.admin_user_id) {
-          throw new Error("Access denied: Store must be created by an admin")
-        }
-
-        // Verify the admin_user_id exists and is an admin
-        const { data: adminProfile } = await supabase
-          .from("user_profiles")
-          .select("role")
-          .eq("id", store.admin_user_id)
-          .single()
-        
-        if (!adminProfile || adminProfile.role !== "admin") {
-          throw new Error("Access denied: Store owner is not an admin")
-        }
-
-        // Find employee - ensure employee belongs to this store and was created by admin
-        const { data: employees } = await supabase
-          .from("employees")
-          .select("*, stores!inner(admin_user_id)")
-          .eq("employee_id", employeeId.toUpperCase())
-          .eq("store_id", store.id)
-        
-        if (!employees || employees.length === 0) {
-          throw new Error("Employee not found or not associated with this store")
-        }
-        const employee = employees[0]
-
-        // Verify employee has a valid store_id that matches the store
-        if (!employee.store_id || employee.store_id !== store.id) {
-          throw new Error("Invalid employee-store association")
-        }
-
-        // Check password (would need password_hash comparison in production)
-        if (employee.password !== password && employee.employee_id !== password) {
-          throw new Error("Invalid password")
-        }
-
-        // Create session (similar to Excel mode)
-        const session = {
-          employeeId: employee.employee_id,
-          employeeName: employee.name,
-          storeId: store.id,
-          storeName: store.name,
-          storeCode: store.store_code,
-        }
-        localStorage.setItem("employeeSession", JSON.stringify(session))
-        localStorage.setItem("currentStoreId", store.id)
-        localStorage.setItem("authType", "employee")
-
-        toast.success("Logged in as Employee")
-        router.push("/dashboard")
-        router.refresh()
+        // Pure Supabase mode (shouldn't reach here since we checked Supabase first)
+        // But keeping as fallback
+        throw new Error("Employee not found. Please ensure employee is synced to Supabase.")
       }
     } catch (error: any) {
       setError(error.message || "Login failed")

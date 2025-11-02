@@ -33,22 +33,42 @@ export async function updateSession(request: NextRequest) {
   // Fetch role if authenticated
   let role: string | null = null
   if (user) {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
       .select("role")
       .eq("id", user.id)
-      .single()
-    role = (profile as any)?.role || null
+      .maybeSingle() // Use maybeSingle() to avoid errors when profile doesn't exist
+    
+    // Default to "admin" if profile doesn't exist, role is null, or query fails
+    // This is consistent with other parts of the codebase where admin is the default role
+    if (profileError) {
+      // Only log non-404 errors (profile missing is expected for new users)
+      const isNotFoundError = profileError.code === 'PGRST116' || 
+                              profileError.message?.includes('No rows') ||
+                              profileError.message?.includes('not found')
+      
+      if (!isNotFoundError) {
+        console.warn("[Middleware] Error fetching user profile:", profileError.message)
+      }
+      role = "admin" // Default to admin if profile query fails
+    } else {
+      role = (profile as any)?.role || "admin"
+    }
   }
 
-  // Protected routes - redirect to login if not authenticated
-  const protectedPaths = ["/dashboard", "/products", "/invoices", "/customers", "/reports", "/settings"]
-  const isProtectedRoute = protectedPaths.some((path) => request.nextUrl.pathname.startsWith(path))
+  // Admin-only routes - require Supabase auth with admin role
+  const adminOnlyPaths = ["/admin", "/employees"]
+  const isAdminOnlyRoute = adminOnlyPaths.some((path) => request.nextUrl.pathname.startsWith(path))
   
   // Customer routes
   const isCustomerRoute = request.nextUrl.pathname.startsWith("/customer/")
-  // Employee routes (same as admin routes for now)
-  const isEmployeeRoute = request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/products") || request.nextUrl.pathname.startsWith("/invoices") || request.nextUrl.pathname.startsWith("/customers")
+  
+  // Employee-accessible routes (employees use localStorage sessions, checked client-side)
+  const employeeAccessiblePaths = ["/dashboard", "/products", "/invoices", "/customers", "/reports"]
+  const isEmployeeAccessibleRoute = employeeAccessiblePaths.some((path) => request.nextUrl.pathname.startsWith(path))
+  
+  // Settings routes - require authentication but can be accessed by both admin and employees
+  const isSettingsRoute = request.nextUrl.pathname.startsWith("/settings")
 
   // Check customer session for customer routes
   if (isCustomerRoute) {
@@ -57,22 +77,35 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse
   }
 
-  if (isProtectedRoute && !user) {
-    // Check for employee session in cookies/localStorage (handled client-side)
-    // For now, redirect to login
-    const url = request.nextUrl.clone()
-    url.pathname = "/auth/login"
-    return NextResponse.redirect(url)
+  // Admin-only routes require Supabase authentication with admin role
+  // BUT: In Excel mode, users may not have Supabase auth, so allow through
+  // Client-side components will handle the actual access control
+  if (isAdminOnlyRoute) {
+    if (!user) {
+      // No Supabase user - could be Excel mode
+      // Allow through, client-side will check admin status
+      // For Excel mode, admin check happens client-side via useUserRole hook
+      return supabaseResponse
+    }
+    
+    // User exists, check if they're admin
+    if (role !== "admin") {
+      // Not an admin - redirect to dashboard
+      const url = request.nextUrl.clone()
+      url.pathname = "/dashboard"
+      return NextResponse.redirect(url)
+    }
+    
+    // Admin user accessing admin routes - allow through
+    return supabaseResponse
   }
 
-  // Role-based protections
-  const adminOnlyPaths = ["/admin"]
-  const isAdminOnlyRoute = adminOnlyPaths.some((path) => request.nextUrl.pathname.startsWith(path))
-
-  if (user && isAdminOnlyRoute && role !== "admin") {
-    const url = request.nextUrl.clone()
-    url.pathname = "/dashboard"
-    return NextResponse.redirect(url)
+  // For employee-accessible routes and settings, allow through without strict Supabase auth check
+  // Client-side components will check for employee sessions (localStorage) or Supabase auth
+  // This allows employees with localStorage sessions to access these routes
+  if (isEmployeeAccessibleRoute || isSettingsRoute) {
+    // Allow through - client-side will handle auth checks (Supabase or employee session)
+    return supabaseResponse
   }
 
   // Auth routes - allow access to login page even if authenticated (user can see their status)

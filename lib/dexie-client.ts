@@ -60,6 +60,18 @@ export class AppDB extends Dexie {
       invoice_sequences: "id, store_id",
       fsHandles: "key",
     })
+    this.version(5).stores({
+      products: "id",
+      customers: "id, email, phone",
+      invoices: "id, created_at, store_id",
+      invoice_items: "id, invoice_id",
+      employees: "id, created_at, employee_id, store_id",
+      stores: "id, store_code, name", // Added "name" index to fix KeyPath error
+      settings: "id",
+      customer_auth: "customer_id, email",
+      invoice_sequences: "id, store_id",
+      fsHandles: "key",
+    })
   }
 }
 

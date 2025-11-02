@@ -89,7 +89,12 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
           employeeId = await generateEmployeeIdSupabase(storeId, formData.name)
         }
-        password = password || employeeId // Default password = employee ID if not provided
+        
+        // Generate password different from employee ID for security
+        if (!password) {
+          const { generateSecurePassword } = await import("@/lib/utils/password-generator")
+          password = generateSecurePassword(employeeId)
+        }
       }
 
       const employeeData: any = {
@@ -102,13 +107,31 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
         joining_date: formData.joining_date || new Date().toISOString(),
         is_active: formData.is_active,
         employee_id: employeeId,
-        password: password || employeeId,
+        password: password || employeeId, // Will be set properly below if not provided
         store_id: storeId,
       }
 
+      // Ensure password is different from employee ID
+      if (!employeeData.password || employeeData.password === employeeId) {
+        const { generateSecurePassword } = await import("@/lib/utils/password-generator")
+        employeeData.password = generateSecurePassword(employeeId)
+      }
+
       if (isExcel) {
+        // In Excel mode: sync to Supabase first (for remote access)
+        // Then save to Excel for local cache
+        const { syncEmployeeToSupabase } = await import("@/lib/utils/supabase-sync")
+        const syncResult = await syncEmployeeToSupabase(employeeData)
+        
+        if (!syncResult.success) {
+          console.warn("[EmployeeForm] Supabase sync failed:", syncResult.error)
+          // Continue anyway - will be synced later
+        }
+        
+        // Also save to Excel for local cache
         await storageManager.updateEmployee(employeeData)
       } else {
+        // In Supabase mode: use API route (handles auth, validation, and RLS)
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
@@ -169,7 +192,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
         title: "Success", 
         description: employee?.id 
           ? "Employee updated successfully" 
-          : `Employee created with ID: ${employeeId}. Password: ${password || employeeId}` 
+          : `Employee created with ID: ${employeeId}. Password: ${employeeData.password}` 
       })
       router.push("/employees")
       router.refresh()

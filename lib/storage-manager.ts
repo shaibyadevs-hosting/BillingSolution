@@ -60,14 +60,41 @@ class StorageManager {
   }
 
   async addEmployee(employee: any) {
+    // ALWAYS sync to Supabase first (for remote access)
+    // This ensures employee login works from any device/incognito
+    try {
+      const { syncEmployeeToSupabase } = await import("@/lib/utils/supabase-sync")
+      await syncEmployeeToSupabase(employee)
+    } catch (error) {
+      console.warn("[StorageManager] Failed to sync employee to Supabase:", error)
+      // Continue - will be synced later or in Excel mode
+    }
+    
+    // Also save to Excel for local cache
     await db.employees?.put?.(employee)
     this.scheduleAutoExport()
   }
   async updateEmployee(employee: any) {
+    // ALWAYS sync to Supabase first
+    try {
+      const { syncEmployeeToSupabase } = await import("@/lib/utils/supabase-sync")
+      await syncEmployeeToSupabase(employee)
+    } catch (error) {
+      console.warn("[StorageManager] Failed to sync employee to Supabase:", error)
+    }
+    
     await db.employees?.put?.(employee)
     this.scheduleAutoExport()
   }
   async deleteEmployee(id: string) {
+    // Delete from Supabase
+    try {
+      const { deleteEmployeeFromSupabase } = await import("@/lib/utils/supabase-sync")
+      await deleteEmployeeFromSupabase(id)
+    } catch (error) {
+      console.warn("[StorageManager] Failed to delete employee from Supabase:", error)
+    }
+    
     await db.employees?.delete?.(id)
     this.scheduleAutoExport()
   }

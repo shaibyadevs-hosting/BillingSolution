@@ -33,28 +33,33 @@ export default function EmployeesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [storesMap, setStoresMap] = useState<Record<string, any>>({})
   const { toast } = useToast()
-  const { isAdmin, isEmployee } = useUserRole()
+  const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole()
   const isExcel = getDatabaseType() === 'excel'
   const router = useRouter()
 
   useEffect(() => {
+    // Wait for role to be determined
+    if (roleLoading) {
+      return
+    }
+
     // Only admin can access this page
-    if (!isLoading) {
-      if (isEmployee || !isAdmin) {
-        router.push("/dashboard")
-        return
-      }
-      if (isAdmin) {
-        fetchEmployees()
-      }
+    if (isEmployee || !isAdmin) {
+      router.push("/dashboard")
+      return
+    }
+
+    // Admin confirmed - fetch employees
+    if (isAdmin) {
+      fetchEmployees()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isExcel, router, isAdmin, isEmployee, isLoading])
+  }, [isExcel, router, isAdmin, isEmployee, roleLoading])
 
   const fetchEmployees = async () => {
     try {
+      setIsLoading(true)
       if (isExcel) {
-        setIsLoading(true)
         const list = await db.employees.toArray()
         // Load stores for Excel mode
         const allStores = await db.stores.toArray()
@@ -64,17 +69,18 @@ export default function EmployeesPage() {
         })
         setStoresMap(stores)
         setEmployees(list as any)
-        return
-      }
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("employees")
-        .select("*, stores(name, store_code)")
-        .order("created_at", { ascending: false })
+      } else {
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from("employees")
+          .select("*, stores(name, store_code)")
+          .order("created_at", { ascending: false })
 
-      if (error) throw error
-      setEmployees(data || [])
+        if (error) throw error
+        setEmployees(data || [])
+      }
     } catch (error) {
+      console.error("[Employees] Error fetching employees:", error)
       toast({
         title: "Error",
         description: "Failed to fetch employees",
@@ -120,54 +126,114 @@ export default function EmployeesPage() {
         return
       }
 
-      // Verify store belongs to admin
-      let store: any = null
+      const rand = Math.floor(Math.random()*10000)
+      const name = `Employee ${rand}`
+      
+      let employeeId: string
+      let employee: any
+
       if (isExcel) {
-        store = await db.stores.get(currentStoreId)
+        // Excel mode - use storageManager
+        const store = await db.stores.get(currentStoreId)
         if (!store || !store.admin_user_id) {
           toast({ title: "Error", description: "Store must be created by an admin", variant: "destructive" })
           return
         }
+
+        // Generate employee ID
+        const { generateEmployeeId } = await import("@/lib/utils/employee-id")
+        employeeId = await generateEmployeeId(currentStoreId, name)
+        
+        // Generate secure password different from employee ID
+        const { generateSecurePassword } = await import("@/lib/utils/password-generator")
+        const securePassword = generateSecurePassword(employeeId)
+        
+        employee = {
+          id: crypto.randomUUID(),
+          name,
+          email: `emp${rand}@example.com`,
+          phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
+          role: 'employee', // Always employee, not admin
+          salary: Math.floor(Math.random()*50000)+20000,
+          joining_date: new Date().toISOString(),
+          is_active: true,
+          employee_id: employeeId,
+          password: securePassword, // Secure password different from employee ID
+          store_id: currentStoreId,
+        }
+        
+        // ALWAYS sync to Supabase first (for remote access)
+        const { syncEmployeeToSupabase } = await import("@/lib/utils/supabase-sync")
+        await syncEmployeeToSupabase(employee)
+        
+        // Also save to Excel for local cache
+        await storageManager.addEmployee(employee)
+        const list = await db.employees.toArray()
+        setEmployees(list as any)
+        toast({ title: "Success", description: `Mock employee "${employee.name}" (ID: ${employeeId}) added. Password: ${securePassword}` })
       } else {
+        // Supabase mode - use API route
         const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          toast({ title: "Error", description: "You must be logged in to add employees", variant: "destructive" })
+          return
+        }
+
+        // Verify store belongs to this admin
         const { data: storeData } = await supabase
           .from("stores")
-          .select("*, user_profiles!stores_admin_user_id_fkey(role)")
+          .select("admin_user_id")
           .eq("id", currentStoreId)
           .single()
         
-        if (!storeData || !storeData.admin_user_id) {
-          toast({ title: "Error", description: "Store must be created by an admin", variant: "destructive" })
+        if (!storeData || storeData.admin_user_id !== user.id) {
+          toast({ title: "Error", description: "Store does not belong to you or store not found", variant: "destructive" })
           return
         }
-        store = storeData
-      }
 
-      const rand = Math.floor(Math.random()*10000)
-      const name = `Employee ${rand}`
-      
-      // Generate employee ID
-      const { generateEmployeeId } = await import("@/lib/utils/employee-id")
-      const employeeId = await generateEmployeeId(currentStoreId, name)
-      
-      const employee: any = {
-        id: crypto.randomUUID(),
-        name,
-        email: `emp${rand}@example.com`,
-        phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
-        role: 'employee', // Always employee, not admin
-        salary: Math.floor(Math.random()*50000)+20000,
-        joining_date: new Date().toISOString(),
-        is_active: true,
-        employee_id: employeeId,
-        password: employeeId, // Default password = employee ID
-        store_id: currentStoreId,
+        // Generate employee ID for Supabase
+        const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
+        employeeId = await generateEmployeeIdSupabase(currentStoreId, name)
+
+        // Generate secure password different from employee ID
+        const { generateSecurePassword } = await import("@/lib/utils/password-generator")
+        const securePassword = generateSecurePassword(employeeId)
+
+        employee = {
+          name,
+          email: `emp${rand}@example.com`,
+          phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
+          role: 'employee', // Always employee, not admin
+          salary: Math.floor(Math.random()*50000)+20000,
+          joining_date: new Date().toISOString().split('T')[0], // Supabase expects date format
+          is_active: true,
+          employee_id: employeeId,
+          password: securePassword, // Secure password different from employee ID
+          store_id: currentStoreId,
+        }
+
+        // Use API route to create employee (handles admin check and user_id automatically)
+        const response = await fetch('/api/employees', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(employee),
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || `Failed to create employee: ${response.statusText}`)
+        }
+
+        const result = await response.json()
+        
+        // Refresh employee list
+        await fetchEmployees()
+        
+        toast({ title: "Success", description: `Mock employee "${employee.name}" (ID: ${employeeId}) added. Password: ${securePassword}` })
       }
-      await storageManager.addEmployee(employee)
-      const list = await db.employees.toArray()
-      setEmployees(list as any)
-      toast({ title: "Success", description: `Mock employee "${employee.name}" (ID: ${employeeId}) added. Password: ${employeeId}` })
     } catch (error: any) {
+      console.error("[Employees] Error adding mock employee:", error)
       toast({ title: "Error", description: error.message || "Failed to add employee", variant: "destructive" })
     }
   }
