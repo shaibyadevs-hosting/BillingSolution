@@ -64,11 +64,13 @@ interface LineItem {
   created_at?: string;
 }
 
-export function InvoiceForm({ customers, products, settings, storeId, employeeId }: InvoiceFormProps) {
+export function InvoiceForm({ customers, products, settings, storeId, employeeId, onCustomersUpdate }: InvoiceFormProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [invoiceNumber, setInvoiceNumber] = useState("")
+  const [showCustomerForm, setShowCustomerForm] = useState(false)
+  const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers)
   
   useEffect(() => {
     // Generate invoice number on mount if we have store/employee
@@ -303,13 +305,25 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="customer">Customer</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="customer">Customer</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCustomerForm(true)}
+                  className="h-7 text-xs"
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add New
+                </Button>
+              </div>
               <Select value={customerId} onValueChange={setCustomerId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select customer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {customers.map((customer) => (
+                  {localCustomers.map((customer) => (
                     <SelectItem key={customer.id} value={customer.id}>
                       {customer.name}
                     </SelectItem>

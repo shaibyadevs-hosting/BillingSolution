@@ -103,7 +103,16 @@ export default function NewInvoicePage() {
         <h1 className="text-2xl md:text-3xl font-bold">Create New Invoice</h1>
         <p className="text-sm md:text-base text-muted-foreground mt-1">Generate a new invoice for your customer</p>
       </div>
-      <InvoiceForm customers={customers || []} products={products || []} settings={settings} storeId={storeId} employeeId={employeeId} />
+      <InvoiceForm 
+        customers={customers || []} 
+        products={products || []} 
+        settings={settings} 
+        storeId={storeId} 
+        employeeId={employeeId}
+        onCustomersUpdate={(updatedCustomers) => {
+          setCustomers(updatedCustomers)
+        }}
+      />
     </div>
   )
 }
