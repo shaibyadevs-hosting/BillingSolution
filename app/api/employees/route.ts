@@ -63,18 +63,60 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
+  console.log("[API][employees][POST] Received request:", {
+    employeeId: body.employee_id,
+    name: body.name,
+    storeId: body.store_id,
+    hasStoreId: !!body.store_id,
+    userId: user.id,
+  })
   
-  // Verify store belongs to this admin
+  // Verify store belongs to this admin and exists
   if (body.store_id) {
-    const { data: store } = await supabase
+    console.log("[API][employees][POST] Checking if store exists:", body.store_id)
+    const { data: store, error: storeError } = await supabase
       .from("stores")
-      .select("admin_user_id")
+      .select("id, name, admin_user_id")
       .eq("id", body.store_id)
       .single()
     
-    if (!store || store.admin_user_id !== user.id) {
-      return NextResponse.json({ error: "Forbidden: Store does not belong to this admin" }, { status: 403 })
+    if (storeError) {
+      console.error("[API][employees][POST] Error fetching store:", {
+        error: storeError,
+        storeId: body.store_id,
+        errorCode: storeError.code,
+        errorMessage: storeError.message,
+      })
+      return NextResponse.json({ 
+        error: `Store not found: ${storeError.message}` 
+      }, { status: 404 })
     }
+    
+    if (!store) {
+      console.error("[API][employees][POST] Store does not exist:", body.store_id)
+      return NextResponse.json({ 
+        error: `Store with ID ${body.store_id} does not exist` 
+      }, { status: 404 })
+    }
+    
+    if (store.admin_user_id !== user.id) {
+      console.error("[API][employees][POST] Store does not belong to user:", {
+        storeAdminUserId: store.admin_user_id,
+        currentUserId: user.id,
+        storeId: body.store_id,
+      })
+      return NextResponse.json({ 
+        error: "Forbidden: Store does not belong to this admin" 
+      }, { status: 403 })
+    }
+    
+    console.log("[API][employees][POST] Store verified:", {
+      storeId: store.id,
+      storeName: store.name,
+      adminUserId: store.admin_user_id,
+    })
+  } else {
+    console.warn("[API][employees][POST] No store_id provided in request")
   }
 
   // Prepare insert data with proper formatting

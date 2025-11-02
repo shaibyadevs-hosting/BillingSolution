@@ -18,6 +18,8 @@ import { storageManager } from "@/lib/storage-manager"
 import { SyncStatus } from "@/components/sync-status"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Badge } from "@/components/ui/badge"
+import { getDatabaseType } from "@/lib/utils/db-mode"
+import { useToast } from "@/hooks/use-toast"
 
 interface HeaderProps {
   title?: string
@@ -29,7 +31,9 @@ export function Header({ title }: HeaderProps) {
   const [initials, setInitials] = useState<string>("U")
   const [storageMode, setStorageMode] = useState<"database" | "excel">("database");
   const [hasMounted, setHasMounted] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const { role, isAdmin, isEmployee, isPublic, isLoading: roleLoading } = useUserRole();
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -97,12 +101,60 @@ export function Header({ title }: HeaderProps) {
   }, [storageMode])
 
   const handleSyncNow = async () => {
+    const dbType = getDatabaseType()
+    const isExcelMode = dbType === 'excel' || storageMode === 'excel'
+    
+    setIsSyncing(true)
     try {
-      const result = await storageManager.saveNowToExcel()
-      // The sync:saved or sync:error event will be dispatched by storageManager
-      // SyncStatus component will pick it up and display it
+      if (isExcelMode) {
+        // In Excel mode: Sync employees FROM Excel/Dexie TO Supabase
+        const { syncAllEmployeesToSupabase } = await import("@/lib/utils/supabase-sync")
+        const result = await syncAllEmployeesToSupabase()
+        
+        if (result.success) {
+          toast({
+            title: "Sync Successful",
+            description: `Successfully synced ${result.synced} employee${result.synced !== 1 ? 's' : ''} to Supabase`,
+          })
+          console.log(`[Header] Successfully synced ${result.synced} employees to Supabase`)
+        } else {
+          const errorMsg = result.errors.length > 0 
+            ? result.errors.slice(0, 3).join(', ') + (result.errors.length > 3 ? '...' : '')
+            : 'Unknown error'
+          toast({
+            title: "Sync Completed with Errors",
+            description: `Synced ${result.synced}, failed ${result.failed}: ${errorMsg}`,
+            variant: "destructive",
+          })
+          console.error(`[Header] Sync completed with errors:`, result.errors)
+        }
+        
+        // Dispatch event for SyncStatus component
+        window.dispatchEvent(new CustomEvent('sync:saved', { 
+          detail: { 
+            ok: result.success, 
+            counts: { employees: result.synced },
+            message: result.success 
+              ? `Synced ${result.synced} employees to Supabase`
+              : `Synced ${result.synced}, ${result.failed} failed`
+          } 
+        }))
+      } else {
+        // In Database mode: Save TO Excel (existing behavior)
+        const result = await storageManager.saveNowToExcel()
+        // The sync:saved or sync:error event will be dispatched by storageManager
+        // SyncStatus component will pick it up and display it
+      }
     } catch (error: any) {
-      window.dispatchEvent(new CustomEvent('sync:error', { detail: { error: error?.message || 'Sync failed' } }))
+      const errorMsg = error?.message || 'Sync failed'
+      toast({
+        title: "Sync Failed",
+        description: errorMsg,
+        variant: "destructive",
+      })
+      window.dispatchEvent(new CustomEvent('sync:error', { detail: { error: errorMsg } }))
+    } finally {
+      setIsSyncing(false)
     }
   }
 
@@ -136,8 +188,22 @@ export function Header({ title }: HeaderProps) {
           )}
         </DropdownMenu>
 
-        <Button variant="outline" className="bg-transparent" onClick={handleSyncNow}>
-          Sync Now
+        <Button 
+          variant="outline" 
+          className="bg-transparent" 
+          onClick={handleSyncNow}
+          disabled={isSyncing}
+          title={
+            (getDatabaseType() === 'excel' || storageMode === 'excel')
+              ? "Upload employees from Excel to Supabase"
+              : "Save current data to Excel"
+          }
+        >
+          {isSyncing ? "Syncing..." : (
+            (getDatabaseType() === 'excel' || storageMode === 'excel')
+              ? "Upload to Supabase"
+              : "Sync Now"
+          )}
         </Button>
 
         <SyncStatus />
