@@ -36,8 +36,6 @@ export async function generateInvoicePDF(data: InvoiceData): Promise<void> {
     import("jspdf-autotable"),
   ])
   
-  // Log what we got from autotable module
-  console.log("[PDF Generator] Autotable module keys:", Object.keys(autoTableModule))
   
   const doc = new jsPDF()
   

@@ -19,7 +19,6 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
   const handlePrint = async () => {
     setIsGenerating(true)
     try {
-      console.log("[InvoicePrint] Starting print process:", { invoiceId, invoiceNumber, hasInvoiceData: !!invoiceData })
 
       let invoice: any = null
       let items: any[] = []
@@ -28,7 +27,6 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
 
       // If invoice data is already provided, use it (avoid API call)
       if (invoiceData) {
-        console.log("[InvoicePrint] Using provided invoice data")
         invoice = invoiceData
         items = invoice.invoice_items || invoice.items || []
         customer = invoice.customers || invoice.customer || null
@@ -44,21 +42,8 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
           lineTotal: Number(item.line_total || item.lineTotal) || 0,
           gstAmount: Number(item.gst_amount || item.gstAmount) || 0,
         }))
-        
-        console.log("[InvoicePrint] Invoice data from props:", {
-          invoiceNumber: invoice.invoice_number,
-          itemsCount: items.length,
-          hasCustomer: !!customer,
-          hasProfile: !!profile,
-          firstItem: items[0] ? {
-            unitPrice: items[0].unitPrice,
-            lineTotal: items[0].lineTotal,
-            gstAmount: items[0].gstAmount
-          } : null
-        })
       } else {
         // Fallback: Fetch from API if data not provided
-        console.log("[InvoicePrint] Fetching invoice from API (fallback)")
         
         // Determine if this is an employee session
         const authType = localStorage.getItem("authType")
@@ -69,25 +54,14 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
           if (employeeSession) {
             const session = JSON.parse(employeeSession)
             apiUrl += `?store_id=${encodeURIComponent(session.storeId)}`
-            console.log("[InvoicePrint] Employee session detected, adding store_id:", session.storeId)
           }
         }
 
-        console.log("[InvoicePrint] Fetching invoice from API:", apiUrl)
 
         // Fetch invoice data via API route
         const response = await fetch(apiUrl)
         const data = await response.json()
 
-        console.log("[InvoicePrint] API response:", {
-          ok: response.ok,
-          status: response.status,
-          hasInvoice: !!data.invoice,
-          hasProfile: !!data.profile,
-          error: data.error,
-          invoiceItems: data.invoice?.invoice_items?.length || 0,
-          hasCustomer: !!data.invoice?.customers
-        })
 
         if (!response.ok || !data.invoice) {
           const errorMsg = data.error || data.hint || "Failed to fetch invoice"
@@ -116,35 +90,12 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
         }))
       }
 
-      console.log("[InvoicePrint] Invoice data prepared:", {
-        invoiceNumber: invoice.invoice_number,
-        itemsCount: items.length,
-        hasCustomer: !!customer,
-        hasProfile: !!profile,
-        customerName: customer?.name,
-        businessName: profile?.business_name,
-        firstItemSample: items[0] ? {
-          unitPrice: items[0].unitPrice,
-          lineTotal: items[0].lineTotal,
-          gstAmount: items[0].gstAmount
-        } : null
-      })
-
       // Validate required data
       if (!items || items.length === 0) {
-        console.warn("[InvoicePrint] Warning: No items found for invoice")
-      }
-
-      // Validate items have required numeric fields
-      const invalidItems = items.filter((item: any) => 
-        item.unitPrice === undefined || item.lineTotal === undefined
-      )
-      if (invalidItems.length > 0) {
-        console.error("[InvoicePrint] Invalid items found:", invalidItems)
+        throw new Error("No items found for invoice")
       }
 
       // Generate PDF
-      console.log("[InvoicePrint] Generating PDF...")
       try {
         await generateInvoicePDF({
           invoiceNumber: invoice.invoice_number || invoiceNumber,
@@ -168,7 +119,6 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
           terms: invoice.terms,
           isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
         })
-        console.log("[InvoicePrint] PDF generated successfully")
       } catch (pdfError: any) {
         console.error("[InvoicePrint] PDF generation error:", pdfError)
         throw new Error(`PDF generation failed: ${pdfError?.message || pdfError}`)
@@ -181,7 +131,6 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
 
       // Trigger print dialog after a short delay
       setTimeout(() => {
-        console.log("[InvoicePrint] Opening print dialog...")
         window.print()
       }, 500)
     } catch (error: any) {

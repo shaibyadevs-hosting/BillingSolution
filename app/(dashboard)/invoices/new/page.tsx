@@ -67,7 +67,6 @@ export default function NewInvoicePage() {
             db.products.toArray(),
             db.invoices.toArray(),
           ])
-          console.log('[NewInvoice][Dexie] customers:', cust.length, 'products:', prod.length)
           setCustomers(cust || [])
           setProducts(prod || [])
           setSettings({
@@ -91,7 +90,6 @@ export default function NewInvoicePage() {
           supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', user.id).eq('is_active', true),
           supabase.from('business_settings').select('*').eq('user_id', user.id).single(),
         ])
-        console.log('[NewInvoice][Supabase] customers:', dbCustomers?.length || 0, 'products:', dbProducts?.length || 0)
         setCustomers(dbCustomers || [])
         setProducts(dbProducts || [])
         setSettings(dbSettings || null)
@@ -100,10 +98,10 @@ export default function NewInvoicePage() {
   }, [isExcel])
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-4 md:space-y-6 px-4 md:px-6 py-4 md:py-6">
       <div>
-        <h1 className="text-3xl font-bold">Create New Invoice</h1>
-        <p className="text-muted-foreground">Generate a new invoice for your customer</p>
+        <h1 className="text-2xl md:text-3xl font-bold">Create New Invoice</h1>
+        <p className="text-sm md:text-base text-muted-foreground mt-1">Generate a new invoice for your customer</p>
       </div>
       <InvoiceForm customers={customers || []} products={products || []} settings={settings} storeId={storeId} employeeId={employeeId} />
     </div>

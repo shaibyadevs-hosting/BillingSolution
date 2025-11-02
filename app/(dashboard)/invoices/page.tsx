@@ -33,7 +33,6 @@ export default function InvoicesPage() {
         if (isExcel) {
           try {
             const list = await db.invoices.toArray()
-            console.log('[InvoicesPage][Dexie] fetched', list?.length || 0)
             setInvoices(list || [])
           } catch (e) {
             console.error('[InvoicesPage][Dexie] load failed:', e)
@@ -170,7 +169,7 @@ export default function InvoicesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 px-4 md:px-6 py-4 md:py-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Invoices</h1>

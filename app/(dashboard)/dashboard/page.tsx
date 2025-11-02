@@ -75,15 +75,25 @@ export default function DashboardPage() {
   }, [dbType]);
 
   const stats = dbType === 'supabase' ? sbStats : excelStats;
-  if (loading || !stats) return <div>Loading...</div>;
+  
+  if (loading || !stats) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px] px-4">
+        <div className="text-center space-y-2">
+          <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   const { totalRevenue = 0, invoicesCount = 0, productsCount = 0, customersCount = 0, recentInvoices = [], lowStockProducts = [] } = stats;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 px-4 md:px-6 py-4 md:py-6">
       <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome back! Here's an overview of your business.</p>
+        <h1 className="text-2xl md:text-3xl font-bold">Dashboard</h1>
+        <p className="text-sm md:text-base text-muted-foreground mt-1">Welcome back! Here's an overview of your business.</p>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
