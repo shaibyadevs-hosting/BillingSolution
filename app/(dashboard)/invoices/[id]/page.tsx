@@ -1,5 +1,7 @@
-import { createClient } from "@/lib/supabase/server"
-import { notFound } from "next/navigation"
+"use client"
+
+import { useEffect, useState } from "react"
+import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -8,37 +10,137 @@ import Link from "next/link"
 import { ArrowLeft, Printer } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
+import { db } from "@/lib/dexie-client"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 
-export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export default function InvoiceDetailPage() {
+  const params = useParams()
+  const invoiceId = params.id as string
+  const [invoice, setInvoice] = useState<any>(null)
+  const [items, setItems] = useState<any[]>([])
+  const [customer, setCustomer] = useState<any>(null)
+  const [settings, setSettings] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const isExcel = getDatabaseType() === 'excel'
 
-  if (!user) {
-    return notFound()
+  useEffect(() => {
+    fetchInvoice()
+  }, [invoiceId])
+
+  const fetchInvoice = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      if (isExcel) {
+        // Excel mode - fetch from Dexie
+        const inv = await db.invoices.get(invoiceId)
+        if (!inv) {
+          setError("Invoice not found")
+          return
+        }
+
+        // Check employee access
+        const authType = localStorage.getItem("authType")
+        if (authType === "employee") {
+          const employeeSession = localStorage.getItem("employeeSession")
+          if (employeeSession) {
+            const session = JSON.parse(employeeSession)
+            // Check if invoice belongs to this employee's store or was created by this employee
+            if (inv.store_id && inv.store_id !== session.storeId) {
+              setError("Access denied: Invoice does not belong to your store")
+              return
+            }
+          }
+        }
+
+        setInvoice(inv)
+
+        // Fetch items
+        const invoiceItems = await db.invoice_items
+          .where("invoice_id")
+          .equals(invoiceId)
+          .toArray()
+        setItems(invoiceItems || [])
+
+        // Fetch customer
+        if (inv.customer_id) {
+          const cust = await db.customers.get(inv.customer_id)
+          setCustomer(cust)
+        }
+      } else {
+        // Supabase mode - use API route to avoid RLS issues
+        try {
+          // Determine if this is an employee session
+          const authType = localStorage.getItem("authType")
+          let apiUrl = `/api/invoices/${invoiceId}`
+          
+          if (authType === "employee") {
+            const employeeSession = localStorage.getItem("employeeSession")
+            if (employeeSession) {
+              const session = JSON.parse(employeeSession)
+              // Add store_id to query params for employee access
+              apiUrl += `?store_id=${encodeURIComponent(session.storeId)}`
+            }
+          }
+
+          // Use API route to bypass RLS issues
+          const response = await fetch(apiUrl)
+          const data = await response.json()
+
+          if (!response.ok || !data.invoice) {
+            setError(data.error || "Invoice not found")
+            return
+          }
+
+          fetchedInvoice = data.invoice
+          setInvoice(data.invoice)
+          setItems(data.invoice.invoice_items || [])
+          
+          if (data.invoice.customers) {
+            setCustomer(data.invoice.customers)
+          }
+
+          // Set business settings if returned by API
+          if (data.profile) {
+            setSettings(data.profile)
+          }
+        } catch (apiError: any) {
+          console.error("API fetch error:", apiError)
+          setError(apiError.message || "Failed to fetch invoice")
+        }
+      }
+    } catch (err: any) {
+      console.error("Error fetching invoice:", err)
+      setError(err.message || "Failed to fetch invoice")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Fetch invoice
-  const { data: invoice } = await supabase
-    .from("invoices")
-    .select("*")
-    .eq("id", params.id)
-    .eq("user_id", user.id)
-    .single()
-
-  if (!invoice) {
-    return notFound()
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading invoice...</p>
+        </div>
+      </div>
+    )
   }
 
-  // Fetch invoice items
-  const { data: items } = await supabase.from("invoice_items").select("*").eq("invoice_id", params.id)
-
-  // Fetch customer
-  const { data: customer } = await supabase.from("customers").select("*").eq("id", invoice.customer_id).single()
-
-  // Fetch business settings
-  const { data: settings } = await supabase.from("user_profiles").select("*").eq("id", user.id).single()
+  if (error || !invoice) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <p className="text-destructive">{error || "Invoice not found"}</p>
+          <Button asChild>
+            <Link href="/invoices">Back to Invoices</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   const statusColors: Record<string, string> = {
     draft: "bg-gray-100 text-gray-800",
@@ -64,8 +166,26 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
           <Badge className={statusColors[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
-          <InvoicePrint invoiceId={params.id} invoiceNumber={invoice.invoice_number} />
-          <InvoiceActions invoiceId={params.id} invoiceNumber={invoice.invoice_number} />
+          <InvoicePrint 
+            invoiceId={invoiceId} 
+            invoiceNumber={invoice.invoice_number}
+            invoiceData={{
+              ...invoice,
+              invoice_items: items,
+              customers: customer,
+              profile: settings
+            }}
+          />
+          <InvoiceActions 
+            invoiceId={invoiceId} 
+            invoiceNumber={invoice.invoice_number}
+            invoiceData={{
+              ...invoice,
+              invoice_items: items,
+              customers: customer,
+              profile: settings
+            }}
+          />
         </div>
       </div>
 

@@ -103,25 +103,33 @@ export function generateInvoicePDF(data: InvoiceData): void {
     ? ["Description", "Qty", "Unit Price", "Discount %", "GST %", "GST Amount", "Total"]
     : ["Description", "Qty", "Unit Price", "Discount %", "Total"]
 
-  const tableData = data.items.map((item) =>
-    data.isGstInvoice
+  const tableData = data.items.map((item) => {
+    // Ensure all numeric values are defined and numbers
+    const unitPrice = Number(item.unitPrice) || 0
+    const discountPercent = Number(item.discountPercent) || 0
+    const gstRate = Number(item.gstRate) || 0
+    const gstAmount = Number(item.gstAmount) || 0
+    const lineTotal = Number(item.lineTotal) || 0
+    const quantity = Number(item.quantity) || 0
+    
+    return data.isGstInvoice
       ? [
-          item.description,
-          item.quantity.toString(),
-          `₹${item.unitPrice.toFixed(2)}`,
-          `${item.discountPercent}%`,
-          `${item.gstRate}%`,
-          `₹${item.gstAmount.toFixed(2)}`,
-          `₹${item.lineTotal.toFixed(2)}`,
+          item.description || '',
+          quantity.toString(),
+          `₹${unitPrice.toFixed(2)}`,
+          `${discountPercent}%`,
+          `${gstRate}%`,
+          `₹${gstAmount.toFixed(2)}`,
+          `₹${lineTotal.toFixed(2)}`,
         ]
       : [
-          item.description,
-          item.quantity.toString(),
-          `₹${item.unitPrice.toFixed(2)}`,
-          `${item.discountPercent}%`,
-          `₹${item.lineTotal.toFixed(2)}`,
-        ],
-  )
+          item.description || '',
+          quantity.toString(),
+          `₹${unitPrice.toFixed(2)}`,
+          `${discountPercent}%`,
+          `₹${lineTotal.toFixed(2)}`,
+        ]
+  })
   ;(doc as any).autoTable({
     columns: tableColumns,
     body: tableData,

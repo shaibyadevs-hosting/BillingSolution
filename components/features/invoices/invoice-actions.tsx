@@ -6,15 +6,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreVertical, Download, Edit2, Trash2, Printer } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import { generateInvoicePDF } from "@/lib/utils/pdf-generator"
 
 interface InvoiceActionsProps {
   invoiceId: string
   invoiceNumber: string
+  invoiceData?: any // Optional: pass invoice data if already loaded
 }
 
-export function InvoiceActions({ invoiceId, invoiceNumber }: InvoiceActionsProps) {
+export function InvoiceActions({ invoiceId, invoiceNumber, invoiceData }: InvoiceActionsProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -22,19 +22,74 @@ export function InvoiceActions({ invoiceId, invoiceNumber }: InvoiceActionsProps
   const handleDownloadPDF = async () => {
     setIsLoading(true)
     try {
-      const supabase = createClient()
-      const { data: invoice } = await supabase.from("invoices").select("*").eq("id", invoiceId).single()
+      let invoice: any = null
+      let items: any[] = []
+      let customer: any = null
+      let profile: any = null
 
-      const { data: items } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoiceId)
+      // If invoice data is already provided, use it (avoid API call)
+      if (invoiceData) {
+        console.log("[InvoiceActions] Using provided invoice data for PDF")
+        invoice = invoiceData
+        const rawItems = invoice.invoice_items || invoice.items || []
+        customer = invoice.customers || invoice.customer || null
+        profile = invoice.profile || null
+        
+        // Transform items to match PDF generator format (snake_case to camelCase)
+        items = rawItems.map((item: any) => ({
+          description: item.description || '',
+          quantity: Number(item.quantity) || 0,
+          unitPrice: Number(item.unit_price || item.unitPrice) || 0,
+          discountPercent: Number(item.discount_percent || item.discountPercent) || 0,
+          gstRate: Number(item.gst_rate || item.gstRate) || 0,
+          lineTotal: Number(item.line_total || item.lineTotal) || 0,
+          gstAmount: Number(item.gst_amount || item.gstAmount) || 0,
+        }))
+      } else {
+        // Fallback: Fetch from API if data not provided
+        console.log("[InvoiceActions] Fetching invoice from API (fallback)")
+        
+        // Determine if this is an employee session
+        const authType = localStorage.getItem("authType")
+        let apiUrl = `/api/invoices/${invoiceId}`
+        
+        if (authType === "employee") {
+          const employeeSession = localStorage.getItem("employeeSession")
+          if (employeeSession) {
+            const session = JSON.parse(employeeSession)
+            apiUrl += `?store_id=${encodeURIComponent(session.storeId)}`
+          }
+        }
 
-      const { data: customer } = await supabase.from("customers").select("*").eq("id", invoice.customer_id).single()
+        // Fetch invoice data via API route
+        const response = await fetch(apiUrl)
+        const data = await response.json()
 
-      const { data: profile } = await supabase.from("user_profiles").select("*").single()
+        if (!response.ok || !data.invoice) {
+          throw new Error(data.error || "Failed to fetch invoice")
+        }
+
+        invoice = data.invoice
+        const rawItems = invoice.invoice_items || []
+        customer = invoice.customers || null
+        profile = data.profile || null
+        
+        // Transform items to match PDF generator format (snake_case to camelCase)
+        items = rawItems.map((item: any) => ({
+          description: item.description || '',
+          quantity: Number(item.quantity) || 0,
+          unitPrice: Number(item.unit_price || item.unitPrice) || 0,
+          discountPercent: Number(item.discount_percent || item.discountPercent) || 0,
+          gstRate: Number(item.gst_rate || item.gstRate) || 0,
+          lineTotal: Number(item.line_total || item.lineTotal) || 0,
+          gstAmount: Number(item.gst_amount || item.gstAmount) || 0,
+        }))
+      }
 
       generateInvoicePDF({
-        invoiceNumber: invoice.invoice_number,
-        invoiceDate: invoice.invoice_date,
-        dueDate: invoice.due_date,
+        invoiceNumber: invoice.invoice_number || invoiceNumber,
+        invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
+        dueDate: invoice.due_date || invoice.dueDate,
         customerName: customer?.name,
         customerEmail: customer?.email,
         customerPhone: customer?.phone,
@@ -44,14 +99,14 @@ export function InvoiceActions({ invoiceId, invoiceNumber }: InvoiceActionsProps
         businessAddress: profile?.business_address,
         businessPhone: profile?.business_phone,
         items: items || [],
-        subtotal: invoice.subtotal,
-        cgstAmount: invoice.cgst_amount,
-        sgstAmount: invoice.sgst_amount,
-        igstAmount: invoice.igst_amount,
-        totalAmount: invoice.total_amount,
+        subtotal: Number(invoice.subtotal) || 0,
+        cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
+        sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
+        igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
+        totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
         notes: invoice.notes,
         terms: invoice.terms,
-        isGstInvoice: invoice.is_gst_invoice,
+        isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
       })
 
       toast({
@@ -74,8 +129,16 @@ export function InvoiceActions({ invoiceId, invoiceNumber }: InvoiceActionsProps
 
     setIsLoading(true)
     try {
-      const supabase = createClient()
-      await supabase.from("invoices").delete().eq("id", invoiceId)
+      // Use API route for deletion
+      const response = await fetch(`/api/invoices/${invoiceId}`, {
+        method: "DELETE",
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete invoice")
+      }
 
       toast({
         title: "Success",
@@ -84,10 +147,10 @@ export function InvoiceActions({ invoiceId, invoiceNumber }: InvoiceActionsProps
 
       router.push("/invoices")
       router.refresh()
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to delete invoice",
+        description: error?.message || "Failed to delete invoice",
         variant: "destructive",
       })
     } finally {

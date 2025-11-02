@@ -34,8 +34,7 @@ export default function EmployeeLoginPage() {
           try {
             const session = JSON.parse(employeeSession)
             if (session.employeeId && session.storeId) {
-              console.log("[EmployeeLogin] Already logged in, redirecting to dashboard")
-              // Use window.location to prevent React re-renders
+              // Already logged in, redirect to dashboard
               window.location.href = "/dashboard"
               return
             }
@@ -65,21 +64,11 @@ export default function EmployeeLoginPage() {
       
       // Try Supabase first (even in Excel mode, employees should be in Supabase)
       try {
-        console.log("[EmployeeLogin] Searching for store:", { 
-          storeName, 
-          storeNameLength: storeName.length,
-          storeNameTrimmed: storeName.trim(),
-        })
-        
         // Find store by name OR store_code (case-insensitive, trimmed)
         const trimmedStoreName = storeName.trim()
         const upperStoreName = trimmedStoreName.toUpperCase()
         
         // Use API route to fetch stores (bypasses RLS issues with direct Supabase calls)
-        console.log("[EmployeeLogin] Step 1: Fetching stores via API (searched:", { 
-          storeCode: upperStoreName, 
-          storeName: trimmedStoreName 
-        })
         
         let stores: any[] = []
         let storeError: any = null
@@ -225,13 +214,11 @@ export default function EmployeeLoginPage() {
           }
       } catch (supabaseError: any) {
         // Supabase lookup failed - continue to Excel fallback
-        console.log("[EmployeeLogin] Supabase lookup failed, trying Excel:", supabaseError.message)
+        // Error logged in catch block below
       }
 
       // Fallback to Excel mode if Supabase didn't work
       if (isExcel) {
-        console.log("[EmployeeLogin] Excel mode: Searching for store:", { storeName })
-        
         // Find store by name (case-insensitive) OR store_code
         const trimmedStoreName = storeName.trim()
         const upperStoreName = trimmedStoreName.toUpperCase()
@@ -243,74 +230,28 @@ export default function EmployeeLoginPage() {
           s.store_code?.toUpperCase().trim() === upperStoreName
         )
         
-        console.log("[EmployeeLogin] Excel mode: Store search results:", {
-          totalStores: allStores.length,
-          matchedStores: stores.length,
-          stores: stores.map(s => ({ id: s.id, name: s.name, code: s.store_code }))
-        })
-        
         if (stores.length === 0) {
-          const availableStores = allStores.map(s => ({
-            name: s.name,
-            code: s.store_code
-          }))
-          console.error("[EmployeeLogin] Store not found. Available stores:", availableStores)
+          const availableStores = allStores.map(s => `${s.name} (${s.store_code})`).join(', ')
           throw new Error(
             `Store not found. Please enter the exact Store Name or Store Code.\n` +
-            `Available stores: ${availableStores.map(s => `${s.name} (${s.code})`).join(', ')}`
+            (availableStores ? `Available stores: ${availableStores}` : '')
           )
         }
         const store = stores[0]
-        
-        console.log("[EmployeeLogin] Excel mode: Store found:", {
-          id: store.id,
-          name: store.name,
-          storeCode: store.store_code
-        })
 
-        // Verify store belongs to an admin (has admin_user_id or created by admin)
+        // Verify store belongs to an admin
         if (!store.admin_user_id) {
           throw new Error("Access denied: Store must be created by an admin")
         }
 
-        // Find employee by employee_id and store_id - ensure employee belongs to this store
+        // Find employee by employee_id and store_id
         const upperEmployeeId = employeeId.toUpperCase().trim()
-        console.log("[EmployeeLogin] Excel mode: Searching for employee:", {
-          employeeId: upperEmployeeId,
-          storeId: store.id,
-        })
-        
         const employees = await db.employees
           .where("employee_id").equals(upperEmployeeId)
           .and(e => e.store_id === store.id)
           .toArray()
         
-        console.log("[EmployeeLogin] Excel mode: Employee search results:", {
-          found: employees.length,
-          employees: employees.map(e => ({
-            id: e.id,
-            employee_id: e.employee_id,
-            name: e.name,
-            store_id: e.store_id,
-            hasPassword: !!e.password,
-          }))
-        })
-        
         if (employees.length === 0) {
-          // Try to find employee without store filter
-          const allEmployees = await db.employees
-            .where("employee_id").equals(upperEmployeeId)
-            .toArray()
-          
-          console.error("[EmployeeLogin] Excel mode: Employee not found in store:", {
-            searchedEmployeeId: upperEmployeeId,
-            searchedStoreId: store.id,
-            foundInOtherStores: allEmployees.map(e => ({
-              employee_id: e.employee_id,
-              store_id: e.store_id,
-            }))
-          })
-          
           throw new Error(
             `Employee "${upperEmployeeId}" not found in store "${store.name}" (${store.store_code}).\n\n` +
             `Please verify the employee ID and store match.`
@@ -320,14 +261,12 @@ export default function EmployeeLoginPage() {
 
         // Verify employee has a valid store_id that matches the store
         if (!employee.store_id || employee.store_id !== store.id) {
-          console.error("[EmployeeLogin] Excel mode: Store ID mismatch")
           throw new Error("Invalid employee-store association")
         }
 
-        // Check password (simple comparison for now, should hash in production)
+        // Check password
         const passwordMatches = employee.password === password || employee.employee_id === password
         if (!passwordMatches) {
-          console.error("[EmployeeLogin] Excel mode: Password mismatch")
           throw new Error("Invalid password. Please check your password or try using your Employee ID as password.")
         }
 
