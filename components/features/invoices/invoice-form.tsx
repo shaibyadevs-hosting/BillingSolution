@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Plus, Trash2, Search, X, Package } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
@@ -32,6 +33,9 @@ interface Product {
   gst_rate: number
   hsn_code: string | null
   unit: string
+  stock_quantity?: number
+  sku?: string | null
+  category?: string | null
 }
 
 interface BusinessSettings {
@@ -403,7 +407,18 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
       {/* Line Items */}
       <Card>
         <CardHeader>
-          <CardTitle>Line Items</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Line Items</CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowProductWindow(true)}
+              className="gap-2"
+            >
+              <Package className="h-4 w-4" />
+              Browse Products
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
