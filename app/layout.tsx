@@ -78,10 +78,10 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         <LicenseGuard>
-          {children}
-          <div className="fixed bottom-3 right-3 rounded-md border bg-background/80 px-3 py-2 shadow">
-            <SyncStatus />
-          </div>
+        {children}
+        <div className="fixed bottom-3 right-3 rounded-md border bg-background/80 px-3 py-2 shadow">
+          <SyncStatus />
+        </div>
         </LicenseGuard>
         <Toaster />
         <SonnerToaster />

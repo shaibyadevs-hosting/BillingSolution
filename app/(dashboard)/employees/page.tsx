@@ -5,13 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Plus, FileSpreadsheet, Search, Edit2, Trash2, Sparkles, Key, Eye } from "lucide-react"
+import { Plus, Search, Edit2, Trash2, Sparkles, Key, Eye } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useUserRole } from "@/lib/hooks/use-user-role"
@@ -34,7 +33,6 @@ export default function EmployeesPage() {
   const [storesMap, setStoresMap] = useState<Record<string, any>>({})
   const { toast } = useToast()
   const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole()
-  const isExcel = getDatabaseType() === 'excel'
   const router = useRouter()
 
   useEffect(() => {
@@ -54,22 +52,12 @@ export default function EmployeesPage() {
       fetchEmployees()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isExcel, router, isAdmin, isEmployee, roleLoading])
+  }, [router, isAdmin, isEmployee, roleLoading])
 
   const fetchEmployees = async () => {
     try {
       setIsLoading(true)
-      if (isExcel) {
-        const list = await db.employees.toArray()
-        // Load stores for Excel mode
-        const allStores = await db.stores.toArray()
-        const stores: Record<string, any> = {}
-        allStores.forEach(store => {
-          stores[store.id] = store
-        })
-        setStoresMap(stores)
-        setEmployees(list as any)
-      } else {
+      {
         const supabase = createClient()
         const { data, error } = await supabase
           .from("employees")
@@ -93,13 +81,6 @@ export default function EmployeesPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure?")) return
-    if (isExcel) {
-      await db.employees.delete(id)
-      setEmployees(employees.filter(e => e.id !== id))
-      toast({ title: "Success", description: "Employee deleted" })
-      return
-    }
-
     try {
       const supabase = createClient()
       await supabase.from("employees").delete().eq("id", id)
@@ -132,46 +113,7 @@ export default function EmployeesPage() {
       let employeeId: string
       let employee: any
 
-      if (isExcel) {
-        // Excel mode - use storageManager
-        const store = await db.stores.get(currentStoreId)
-        if (!store || !store.admin_user_id) {
-          toast({ title: "Error", description: "Store must be created by an admin", variant: "destructive" })
-          return
-        }
-
-        // Generate employee ID
-        const { generateEmployeeId } = await import("@/lib/utils/employee-id")
-        employeeId = await generateEmployeeId(currentStoreId, name)
-        
-        // Generate secure password different from employee ID
-        const { generateSecurePassword } = await import("@/lib/utils/password-generator")
-        const securePassword = generateSecurePassword(employeeId)
-        
-        employee = {
-          id: crypto.randomUUID(),
-          name,
-          email: `emp${rand}@example.com`,
-          phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
-          role: 'employee', // Always employee, not admin
-          salary: Math.floor(Math.random()*50000)+20000,
-          joining_date: new Date().toISOString(),
-          is_active: true,
-          employee_id: employeeId,
-          password: securePassword, // Secure password different from employee ID
-          store_id: currentStoreId,
-        }
-        
-        // ALWAYS sync to Supabase first (for remote access)
-        const { syncEmployeeToSupabase } = await import("@/lib/utils/supabase-sync")
-        await syncEmployeeToSupabase(employee)
-        
-        // Also save to Excel for local cache
-        await storageManager.addEmployee(employee)
-        const list = await db.employees.toArray()
-        setEmployees(list as any)
-        toast({ title: "Success", description: `Mock employee "${employee.name}" (ID: ${employeeId}) added. Password: ${securePassword}` })
-      } else {
+      {
         // Supabase mode - use API route
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -238,45 +180,7 @@ export default function EmployeesPage() {
     }
   }
 
-  // Excel import logic
-  function ExcelImport() {
-    const inputRef = useRef<HTMLInputElement | null>(null)
-    const [importing, setImporting] = useState(false)
-    const handleClick = () => inputRef.current?.click()
-    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!e.target.files?.[0]) return
-      setImporting(true)
-      try {
-        const { importEmployeesFromExcel } = await import("@/lib/utils/excel-import")
-        const res = await importEmployeesFromExcel(e.target.files[0])
-        if (!res.success) throw new Error(res.errors[0] || "Import failed")
-        const toSave = (res.data || []).map((e: any) => ({ id: crypto.randomUUID(), ...e }))
-        for (const emp of toSave) {
-          await storageManager.addEmployee(emp)
-        }
-        const list = await db.employees.toArray()
-        setEmployees(list as any)
-        toast({ title: "Imported", description: `Employees imported: ${toSave.length}` })
-      } finally {
-        setImporting(false)
-        if (inputRef.current) inputRef.current.value = ""
-      }
-    }
-    return (
-      <>
-        <Button type="button" variant="secondary" className="mr-2" onClick={handleClick} disabled={importing}>
-          <FileSpreadsheet className="mr-2 h-4 w-4" /> Import from Excel
-        </Button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          onChange={handleImport}
-          style={{ display: "none" }}
-        />
-      </>
-    )
-  }
+  // Excel import removed
 
   const filteredEmployees = employees.filter(
     (emp) =>

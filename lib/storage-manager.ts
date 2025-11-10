@@ -1,102 +1,52 @@
 "use client"
 
-import { db, type Product, type StoreSettings } from "./dexie-client"
-import { autoSaveExcel } from "./excel-auto"
-import { hasConnectedExcel, saveToConnectedExcel } from "./excel-fs"
+// IndexedDB-only storage manager (Excel export removed)
+import { db, type Product } from "./dexie-client"
 
 class StorageManager {
-  private autoSaveTimer: any = null
-
-  private scheduleAutoExport() {
-    if (typeof window === "undefined") return
-    if (this.autoSaveTimer) clearTimeout(this.autoSaveTimer)
-    this.autoSaveTimer = setTimeout(async () => {
-      try {
-        const [products, customers, invoices, employees, invoiceItems] = await Promise.all([
-          db.products.toArray(),
-          db.customers.toArray(),
-          db.invoices.toArray(),
-          db.employees?.toArray?.() ?? Promise.resolve([]),
-          db.invoice_items?.toArray?.() ?? Promise.resolve([]),
-        ])
-        let result
-        if (await hasConnectedExcel()) {
-          result = await saveToConnectedExcel(products, customers, invoices, employees as any, invoiceItems as any)
-        } else {
-          const ok = await autoSaveExcel(products as any, invoices as any)
-          result = { ok, counts: { products: products.length, customers: customers.length, invoices: invoices.length, employees: (employees as any[]).length, invoice_items: (invoiceItems as any[]).length } }
-        }
-        window.dispatchEvent(new CustomEvent('sync:saved', { detail: result }))
-      } catch (error: any) {
-        window.dispatchEvent(new CustomEvent('sync:error', { detail: { error: error?.message || 'Unknown error' } }))
-      }
-    }, 500)
+  private notifySaved(ok = true) {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent('sync:saved', { detail: { ok } }))
+    }
   }
 
   async addProduct(product: Product) {
     await db.products.put(product)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
   async updateProduct(product: Product) {
     await db.products.put(product)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
   async deleteProduct(id: string) {
     await db.products.delete(id)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
 
   async addCustomer(customer: any) {
     await db.customers.put(customer)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
   async updateCustomer(customer: any) {
     await db.customers.put(customer)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
   async deleteCustomer(id: string) {
     await db.customers.delete(id)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
 
   async addEmployee(employee: any) {
-    // ALWAYS sync to Supabase first (for remote access)
-    // This ensures employee login works from any device/incognito
-    try {
-      const { syncEmployeeToSupabase } = await import("@/lib/utils/supabase-sync")
-      await syncEmployeeToSupabase(employee)
-    } catch (error) {
-      console.warn("[StorageManager] Failed to sync employee to Supabase:", error)
-      // Continue - will be synced later or in Excel mode
-    }
-    
-    // Also save to Excel for local cache
     await db.employees?.put?.(employee)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
   async updateEmployee(employee: any) {
-    // ALWAYS sync to Supabase first
-    try {
-      const { syncEmployeeToSupabase } = await import("@/lib/utils/supabase-sync")
-      await syncEmployeeToSupabase(employee)
-    } catch (error) {
-      console.warn("[StorageManager] Failed to sync employee to Supabase:", error)
-    }
-    
     await db.employees?.put?.(employee)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
   async deleteEmployee(id: string) {
-    // Delete from Supabase
-    try {
-      const { deleteEmployeeFromSupabase } = await import("@/lib/utils/supabase-sync")
-      await deleteEmployeeFromSupabase(id)
-    } catch (error) {
-      console.warn("[StorageManager] Failed to delete employee from Supabase:", error)
-    }
-    
     await db.employees?.delete?.(id)
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
 
   async addInvoice(invoice: any, items: any[]) {
@@ -118,7 +68,7 @@ class StorageManager {
       }))
       await db.invoice_items.bulkPut(invoiceItems)
     }
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
 
   async updateInvoice(invoice: any, items: any[]) {
@@ -134,36 +84,18 @@ class StorageManager {
       }))
       await db.invoice_items.bulkPut(invoiceItems)
     }
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
 
   async deleteInvoice(id: string) {
     await db.invoices.delete(id)
     await db.invoice_items.where("invoice_id").equals(id).delete()
-    this.scheduleAutoExport()
+    this.notifySaved(true)
   }
 
+  // Deprecated no-op retained for compatibility with UI buttons
   async saveNowToExcel() {
-    const [products, customers, invoices, employees, invoiceItems] = await Promise.all([
-      db.products.toArray(),
-      db.customers.toArray(),
-      db.invoices.toArray(),
-      db.employees?.toArray?.() ?? Promise.resolve([]),
-      db.invoice_items?.toArray?.() ?? Promise.resolve([]),
-    ])
-    let result
-    if (await hasConnectedExcel()) {
-      result = await saveToConnectedExcel(products, customers, invoices, employees as any, invoiceItems as any)
-    } else {
-      const ok = await autoSaveExcel(products as any, invoices as any)
-      result = { ok, counts: { products: products.length, customers: customers.length, invoices: invoices.length, employees: (employees as any[]).length, invoice_items: (invoiceItems as any[]).length } }
-    }
-    if (result.ok) {
-      window.dispatchEvent(new CustomEvent('sync:saved', { detail: result }))
-    } else {
-      window.dispatchEvent(new CustomEvent('sync:error', { detail: result }))
-    }
-    return result
+    return { ok: true, counts: {} }
   }
 }
 

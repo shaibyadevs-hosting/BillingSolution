@@ -227,6 +227,23 @@ class BillingDatabase extends Dexie {
       sales_items: "id, sale_id, product_id",
       license: "++id, licenseKey, macAddress, status",
     })
+
+    // Version 3: Add index for updated_at on license store
+    this.version(3).stores({
+      products: "id, user_id, name, is_synced, deleted",
+      customers: "id, user_id, name, is_synced, deleted",
+      invoices: "id, user_id, customer_id, invoice_number, invoice_date, is_synced, deleted",
+      invoice_items: "id, invoice_id, product_id",
+      sync_queue: "++id, entity_type, entity_id, created_at",
+      settings: "++id",
+      users: "id, email, role",
+      inventory: "id, product_id",
+      employees: "id, employee_id, is_active",
+      attendance: "id, employee_id, date",
+      sales_header: "id, invoice_number, customer_id, sale_date, status",
+      sales_items: "id, sale_id, product_id",
+      license: "++id, licenseKey, macAddress, status, updated_at",
+    })
   }
 }
 

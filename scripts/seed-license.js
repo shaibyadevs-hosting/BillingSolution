@@ -29,6 +29,23 @@ function loadCredentials() {
     return cert(require(localPath));
   }
 
+  // Try app/firebase/*.json (user may have dropped generated key here)
+  try {
+    const firebaseDir = path.join(process.cwd(), "app", "firebase");
+    if (fs.existsSync(firebaseDir)) {
+      const files = fs
+        .readdirSync(firebaseDir)
+        .filter((f) => f.toLowerCase().endsWith(".json"));
+      if (files.length > 0) {
+        const candidate = path.join(firebaseDir, files[0]);
+        console.log(`[License Seed] Using credentials at ${candidate}`);
+        return cert(require(candidate));
+      }
+    }
+  } catch (e) {
+    // fall through to applicationDefault
+  }
+
   console.warn(
     "[License Seed] service-account.json not found. Falling back to applicationDefault credentials."
   );

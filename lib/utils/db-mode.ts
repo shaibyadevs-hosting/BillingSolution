@@ -1,18 +1,28 @@
 "use client"
 
-export function getDatabaseType(): 'excel' | 'supabase' {
-  if (typeof window === 'undefined') return 'excel'
+// Single primary local DB: IndexedDB (Dexie)
+export type DatabaseMode = 'indexeddb' | 'supabase'
+
+export function getDatabaseType(): DatabaseMode {
+  if (typeof window === 'undefined') return 'indexeddb'
   const v = window.localStorage.getItem('databaseType')
-  return v === 'supabase' ? 'supabase' : 'excel'
+  return v === 'supabase' ? 'supabase' : 'indexeddb'
 }
 
-export function ensureExcelModeFromSetting() {
-  // No-op in new Dexie+Excel FS architecture
+export function isIndexedDbMode() {
+  return getDatabaseType() === 'indexeddb'
 }
 
+export function isCloudMode() {
+  return getDatabaseType() === 'supabase'
+}
+
+export function forceIndexedDbMode() {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem('databaseType', 'indexeddb')
+}
+
+// Backward-compatible alias for legacy checks (`=== 'excel'`)
 export function isExcelMode() {
-  const type = getDatabaseType()
-  return type === 'excel'
+  return isIndexedDbMode()
 }
-
-

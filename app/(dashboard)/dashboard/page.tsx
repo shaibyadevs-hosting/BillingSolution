@@ -1,6 +1,6 @@
 "use client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog, FileSpreadsheet } from "lucide-react";
+import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
@@ -9,11 +9,10 @@ import { db } from '@/lib/dexie-client';
 import { createClient } from '@/lib/supabase/client';
 import { getDatabaseType } from '@/lib/utils/db-mode';
 import { useUserRole } from '@/lib/hooks/use-user-role';
-import { EmployeeExcelExport } from '@/components/features/employees/employee-excel-export';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [excelStats, setExcelStats] = useState<any>(null);
+  const [localStats, setLocalStats] = useState<any>(null);
   const [sbStats, setSbStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole();
@@ -28,7 +27,8 @@ export default function DashboardPage() {
   }, [isAdmin, roleLoading, router]);
 
   useEffect(() => {
-    if (dbType === 'excel') {
+    // Local (IndexedDB) mode
+    if (dbType !== 'supabase') {
       (async () => {
         try {
           setLoading(true);
@@ -37,7 +37,7 @@ export default function DashboardPage() {
             db.customers.toArray(),
             db.invoices.toArray(),
           ]);
-          setExcelStats({
+          setLocalStats({
             totalRevenue: (invoices || []).reduce((s: number, i: any)=> s + Number(i.total_amount || i.total || 0), 0),
             productsCount: products?.length || 0,
             customersCount: customers?.length || 0,
@@ -74,7 +74,7 @@ export default function DashboardPage() {
     }
   }, [dbType]);
 
-  const stats = dbType === 'supabase' ? sbStats : excelStats;
+  const stats = dbType === 'supabase' ? sbStats : localStats;
   
   if (loading || !stats) {
     return (
@@ -209,25 +209,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-      {/* Excel Export Section for Employees */}
-      {isEmployee && dbType === 'excel' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5" />
-              Excel Data Management
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Export your employee data to Excel format for backup or offline use.
-              </p>
-              <EmployeeExcelExport />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Excel UI removed in favor of IndexedDB-first local storage */}
 
       <Card>
         <CardHeader>
