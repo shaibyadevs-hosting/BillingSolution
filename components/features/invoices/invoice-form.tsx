@@ -11,12 +11,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2, Search, X, Package } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
 import { storageManager } from "@/lib/storage-manager"
 import { InlineCustomerForm } from "@/components/features/customers/inline-customer-form"
+import { useMemo } from "react"
+import { Badge } from "@/components/ui/badge"
 
 interface Customer {
   id: string
