@@ -103,6 +103,8 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
   const [isSameState, setIsSameState] = useState(true)
   const [notes, setNotes] = useState("")
   const [terms, setTerms] = useState("")
+  const [showProductWindow, setShowProductWindow] = useState(false)
+  const [productSearchTerm, setProductSearchTerm] = useState("")
 
   const [lineItems, setLineItems] = useState<LineItem[]>([
     {
@@ -162,6 +164,47 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
         return item
       }),
     )
+  }
+
+  // Calculate frequently bought products (products that appear most in lineItems)
+  const frequentlyBoughtProducts = useMemo(() => {
+    // For now, we'll show products with stock > 0, sorted by name
+    // In a real app, you'd track purchase frequency from invoice_items
+    return products
+      .filter(p => p.stock_quantity > 0)
+      .slice(0, 8)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [products])
+
+  // Filter products based on search
+  const filteredProducts = useMemo(() => {
+    if (!productSearchTerm) return products.filter(p => p.stock_quantity > 0)
+    const search = productSearchTerm.toLowerCase()
+    return products.filter(
+      p => p.stock_quantity > 0 && (
+        p.name.toLowerCase().includes(search) ||
+        p.sku?.toLowerCase().includes(search) ||
+        p.category?.toLowerCase().includes(search)
+      )
+    )
+  }, [products, productSearchTerm])
+
+  // Add product to invoice
+  const addProductToInvoice = (product: Product) => {
+    const newLineItem: LineItem = {
+      id: crypto.randomUUID(),
+      product_id: product.id,
+      description: product.name,
+      quantity: 1,
+      unit_price: product.price,
+      discount_percent: 0,
+      gst_rate: product.gst_rate,
+      hsn_code: product.hsn_code || "",
+    }
+    setLineItems([...lineItems, newLineItem])
+    setShowProductWindow(false)
+    setProductSearchTerm("")
+    toast({ title: "Product added", description: `${product.name} added to invoice` })
   }
 
   // Calculate totals
