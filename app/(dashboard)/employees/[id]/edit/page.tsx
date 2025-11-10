@@ -6,7 +6,6 @@ import { EmployeeForm } from "@/components/features/employees/employee-form"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useToast } from "@/hooks/use-toast"
 
 export default function EditEmployeePage() {
@@ -14,7 +13,6 @@ export default function EditEmployeePage() {
   const router = useRouter()
   const { toast } = useToast()
   const { isAdmin, loading: roleLoading } = useUserRole()
-  const isExcel = getDatabaseType() === 'excel'
   const [employee, setEmployee] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -29,15 +27,7 @@ export default function EditEmployeePage() {
   const fetchEmployee = async () => {
     try {
       setIsLoading(true)
-      if (isExcel) {
-        const emp = await db.employees.get(params.id as string)
-        if (!emp) {
-          toast({ title: "Error", description: "Employee not found", variant: "destructive" })
-          router.push("/employees")
-          return
-        }
-        setEmployee(emp)
-      } else {
+      {
         const supabase = createClient()
         const { data: emp, error } = await supabase
           .from("employees")
@@ -46,11 +36,16 @@ export default function EditEmployeePage() {
           .single()
         
         if (error || !emp) {
-          toast({ title: "Error", description: "Employee not found", variant: "destructive" })
-          router.push("/employees")
-          return
+          const localEmp = await db.employees?.get?.(params.id as string)
+          if (!localEmp) {
+            toast({ title: "Error", description: "Employee not found", variant: "destructive" })
+            router.push("/employees")
+            return
+          }
+          setEmployee(localEmp)
+        } else {
+          setEmployee(emp)
         }
-        setEmployee(emp)
       }
     } catch (error) {
       toast({ title: "Error", description: "Failed to load employee", variant: "destructive" })
