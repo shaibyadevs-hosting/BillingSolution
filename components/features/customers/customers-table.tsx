@@ -1,13 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Pencil, Trash2, Search, Eye } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { MoreHorizontal, Pencil, Trash2, Search, Eye, Filter, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
@@ -31,16 +32,34 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
     setCustomers(initialCustomers || [])
   }, [initialCustomers])
   const [searchTerm, setSearchTerm] = useState("")
+  const [selectedGstinFilter, setSelectedGstinFilter] = useState<string>("all")
   const router = useRouter()
   const { toast } = useToast()
 
-  const filteredCustomers = customers.filter(
-    (customer) =>
-      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone?.includes(searchTerm) ||
-      customer.gstin?.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const filteredCustomers = useMemo(() => {
+    return customers.filter((customer) => {
+      // Search filter
+      const matchesSearch =
+        customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.phone?.includes(searchTerm) ||
+        customer.gstin?.toLowerCase().includes(searchTerm.toLowerCase())
+
+      // GSTIN filter
+      const matchesGstin =
+        selectedGstinFilter === "all" ||
+        (selectedGstinFilter === "has-gstin" && customer.gstin) ||
+        (selectedGstinFilter === "no-gstin" && !customer.gstin)
+
+      return matchesSearch && matchesGstin
+    })
+  }, [customers, searchTerm, selectedGstinFilter])
+
+  const hasActiveFilters = selectedGstinFilter !== "all"
+
+  const clearFilters = () => {
+    setSelectedGstinFilter("all")
+  }
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this customer?")) return
@@ -66,15 +85,61 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
   return (
     <Card>
       <CardContent className="p-6">
-        <div className="mb-4 flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search customers by name, email, phone, or GSTIN..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
+        <div className="mb-4 space-y-4">
+          {/* Search and Total Count Row */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="relative flex-1 w-full sm:w-auto">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search customers by name, email, phone, or GSTIN..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+              <span className="font-medium text-foreground">
+                Total: <span className="font-semibold">{customers.length}</span>
+              </span>
+              {filteredCustomers.length !== customers.length && (
+                <span className="text-muted-foreground">
+                  | Showing: <span className="font-semibold text-foreground">{filteredCustomers.length}</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Filters Row */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Filter className="h-4 w-4" />
+              <span className="font-medium">Filters:</span>
+            </div>
+            
+            {/* GSTIN Filter */}
+            <Select value={selectedGstinFilter} onValueChange={setSelectedGstinFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="GSTIN" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Customers</SelectItem>
+                <SelectItem value="has-gstin">Has GSTIN</SelectItem>
+                <SelectItem value="no-gstin">No GSTIN</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Clear Filters Button */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-9 gap-2"
+              >
+                <X className="h-4 w-4" />
+                Clear Filters
+              </Button>
+            )}
           </div>
         </div>
 

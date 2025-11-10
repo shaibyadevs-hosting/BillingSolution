@@ -16,6 +16,7 @@ import {
   Wifi,
   WifiOff,
   UserCog,
+  Boxes,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
@@ -23,22 +24,25 @@ import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 
-// Navigation items for different user roles
-const adminNavigation = [
-  { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-  { name: "Employees", href: "/employees", icon: UserCog },
-  { name: "Employee Analytics", href: "/employees/analytics", icon: BarChart3 },
-  { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "Settings", href: "/settings", icon: Settings },
-]
-
-const employeeNavigation = [
+const sharedNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Products", href: "/products", icon: Package },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Invoices", href: "/invoices", icon: Receipt },
+  { name: "Inventory", href: "/inventory", icon: Boxes },
   { name: "Reports", href: "/reports", icon: BarChart3 },
 ]
+
+// Navigation items for different user roles
+const adminNavigation = [
+  ...sharedNavigation,
+  { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+  { name: "Employees", href: "/employees", icon: UserCog },
+  { name: "Employee Analytics", href: "/employees/analytics", icon: BarChart3 },
+  { name: "Settings", href: "/settings", icon: Settings },
+]
+
+const employeeNavigation = sharedNavigation
 
 export function Sidebar() {
   const pathname = usePathname()

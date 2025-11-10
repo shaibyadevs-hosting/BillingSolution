@@ -1,6 +1,5 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Plus, FileSpreadsheet, Sparkles } from "lucide-react"
 import Link from "next/link"
@@ -9,29 +8,19 @@ import { toast } from "sonner"
 // excel-sync-controller removed; Dexie is the source of truth
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
+import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
 import { storageManager } from "@/lib/storage-manager"
-import { useUserRole } from "@/lib/hooks/use-user-role"
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const router = useRouter()
-  const { isAdmin, isLoading: roleLoading } = useUserRole()
-
-  // Redirect admin to analytics page
-  useEffect(() => {
-    if (!roleLoading && isAdmin) {
-      router.push("/admin/analytics")
-    }
-  }, [isAdmin, roleLoading, router])
 
   const initializedRef = useRef(false)
   useEffect(() => {
     if (initializedRef.current) return
     initializedRef.current = true
-    const isExcel = getDatabaseType() === 'excel'
-    if (isExcel) {
+    const isIndexedDb = isIndexedDbMode()
+    if (isIndexedDb) {
       // Prefer the Excel API so we read from the data folder
       (async () => {
         try {
@@ -75,6 +64,12 @@ export default function ProductsPage() {
       if (!e.target.files?.[0]) return
       setImporting(true)
       try {
+        const isIndexedDb = isIndexedDbMode()
+        if (!isIndexedDb) {
+          toast.error("Excel import is only available in IndexedDB mode")
+          return
+        }
+        
         const { importProductsFromExcel } = await import("@/lib/utils/excel-import")
         const res = await importProductsFromExcel(e.target.files[0])
         if (!res.success) throw new Error(res.errors[0] || "Import failed")
@@ -111,24 +106,56 @@ export default function ProductsPage() {
   }
 
   const handleAddMockProduct = async () => {
-    const rand = Math.floor(Math.random()*10000)
-    const product = {
-      id: crypto.randomUUID(),
-      name: `Mock Product ${rand}`,
-      sku: `SKU-${rand}`,
-      category: ["General","Tools","Food"][rand%3],
-      price: Number((Math.random()*1000+10).toFixed(2)),
-      cost_price: Number((Math.random()*800+5).toFixed(2)),
-      stock_quantity: Math.floor(Math.random()*100)+1,
-      unit: "piece",
-      hsn_code: "1234",
-      gst_rate: 18,
-      is_active: true,
+    try {
+      const rand = Math.floor(Math.random()*10000)
+      const isIndexedDb = isIndexedDbMode()
+      
+      const product = {
+        id: crypto.randomUUID(),
+        name: `Mock Product ${rand}`,
+        sku: `SKU-${rand}`,
+        category: ["General","Tools","Food"][rand%3],
+        price: Number((Math.random()*1000+10).toFixed(2)),
+        cost_price: Number((Math.random()*800+5).toFixed(2)),
+        stock_quantity: Math.floor(Math.random()*100)+1,
+        unit: "piece",
+        hsn_code: "1234",
+        gst_rate: 18,
+        is_active: true,
+      }
+
+      if (isIndexedDb) {
+        // Save to Dexie
+        await storageManager.addProduct(product as any)
+        const list = await db.products.toArray()
+        setProducts(list)
+        toast.success(`Mock product "${product.name}" added!`)
+      } else {
+        // Save to Supabase
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          toast.error("Not authenticated")
+          return
+        }
+        const { error } = await supabase.from("products").insert({
+          ...product,
+          user_id: user.id,
+        })
+        if (error) throw error
+        
+        // Refresh from Supabase
+        const { data: dbProducts } = await supabase
+          .from("products")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+        setProducts(dbProducts || [])
+        toast.success(`Mock product "${product.name}" added!`)
+      }
+    } catch (error: any) {
+      toast.error("Failed to add mock product: " + (error.message || error.toString()))
     }
-    await storageManager.addProduct(product as any)
-    const list = await db.products.toArray()
-    setProducts(list)
-    toast.success(`Mock product "${product.name}" added!`)
   }
 
   return (

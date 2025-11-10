@@ -4,9 +4,14 @@
 import { db, type Product } from "./dexie-client"
 
 class StorageManager {
-  private notifySaved(ok = true) {
+  private notifySaved(ok = true, counts?: { products?: number; customers?: number; invoices?: number; invoice_items?: number }) {
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent('sync:saved', { detail: { ok } }))
+      window.dispatchEvent(new CustomEvent('sync:saved', { 
+        detail: { 
+          ok, 
+          counts: counts || { products: 0, customers: 0, invoices: 0, invoice_items: 0 }
+        } 
+      }))
     }
   }
 

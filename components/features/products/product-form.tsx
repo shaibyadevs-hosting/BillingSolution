@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { storageManager } from "@/lib/storage-manager"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { v4 as uuidv4 } from "uuid"
 
 interface Product {
@@ -57,12 +58,40 @@ export function ProductForm({ product }: ProductFormProps) {
     setIsLoading(true);
     try {
       const payload: any = { id: product?.id || uuidv4(), ...formData }
-      if (product?.id) {
-        await storageManager.updateProduct(payload)
-        toast({ title: "Success", description: "Product updated" })
+      const isIndexedDb = isIndexedDbMode()
+      
+      if (isIndexedDb) {
+        // Save to Dexie
+        if (product?.id) {
+          await storageManager.updateProduct(payload)
+          toast({ title: "Success", description: "Product updated" })
+        } else {
+          await storageManager.addProduct(payload)
+          toast({ title: "Success", description: "Product created" })
+        }
       } else {
-        await storageManager.addProduct(payload)
-        toast({ title: "Success", description: "Product created" })
+        // Save to Supabase
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
+          return
+        }
+        
+        const productData = {
+          ...payload,
+          user_id: user.id,
+        }
+        
+        if (product?.id) {
+          const { error } = await supabase.from("products").update(productData).eq("id", product.id)
+          if (error) throw error
+          toast({ title: "Success", description: "Product updated" })
+        } else {
+          const { error } = await supabase.from("products").insert(productData)
+          if (error) throw error
+          toast({ title: "Success", description: "Product created" })
+        }
       }
       router.push("/products")
       router.refresh();

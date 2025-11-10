@@ -1,30 +1,20 @@
 "use client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog } from "lucide-react";
+import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { db } from '@/lib/dexie-client';
 import { createClient } from '@/lib/supabase/client';
 import { getDatabaseType } from '@/lib/utils/db-mode';
 import { useUserRole } from '@/lib/hooks/use-user-role';
 
 export default function DashboardPage() {
-  const router = useRouter();
   const [localStats, setLocalStats] = useState<any>(null);
   const [sbStats, setSbStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole();
   const dbType = getDatabaseType();
-
-  // Redirect admin to analytics page
-  useEffect(() => {
-    if (!roleLoading && isAdmin) {
-      router.push("/admin/analytics");
-      return;
-    }
-  }, [isAdmin, roleLoading, router]);
 
   useEffect(() => {
     // Local (IndexedDB) mode
@@ -167,7 +157,7 @@ export default function DashboardPage() {
             ) : (
               <div className="py-8 text-center text-muted-foreground">
                 <p>No invoices yet</p>
-                {isEmployee && (
+                {(isEmployee || isAdmin) && (
                   <Button asChild className="mt-4">
                     <Link href="/invoices/new">Create Your First Invoice</Link>
                   </Button>
@@ -217,7 +207,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {isEmployee && (
+            {(isEmployee || isAdmin) && (
               <Button asChild className="h-auto flex-col gap-2 py-4">
                 <Link href="/invoices/new">
                   <Receipt className="h-6 w-6" />
@@ -233,6 +223,12 @@ export default function DashboardPage() {
                 </Link>
               </Button>
             )}
+            <Button asChild variant="outline" className="h-auto flex-col gap-2 py-4 bg-transparent">
+              <Link href="/inventory">
+                <Boxes className="h-6 w-6" />
+                <span>Inventory Overview</span>
+              </Link>
+            </Button>
             <Button asChild variant="outline" className="h-auto flex-col gap-2 py-4 bg-transparent">
               <Link href="/products/new">
                 <Package className="h-6 w-6" />

@@ -11,12 +11,13 @@ export function SyncStatus() {
     const onSaved = (e: any) => {
       const result = e.detail
       if (mounted) {
+        const counts = result.counts || { products: 0, customers: 0, invoices: 0, invoice_items: 0 }
         setSaveStatus({
           status: result.ok ? 'success' : 'error',
           message: result.ok 
-            ? `Saved: ${result.counts.products}P, ${result.counts.customers}C, ${result.counts.invoices}I, ${result.counts.invoice_items || 0}Items`
+            ? `Saved: ${counts.products || 0}P, ${counts.customers || 0}C, ${counts.invoices || 0}I, ${counts.invoice_items || 0}Items`
             : result.error || 'Save failed',
-          counts: result.counts,
+          counts: counts,
           time: new Date().toLocaleTimeString()
         })
         // Clear success message after 5 seconds

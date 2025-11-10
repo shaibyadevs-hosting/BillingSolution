@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Pencil, Trash2, Search } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { MoreHorizontal, Pencil, Trash2, Search, Filter, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
@@ -35,15 +36,57 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
     setProducts(initialProducts || [])
   }, [initialProducts])
   const [searchTerm, setSearchTerm] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState<string>("all")
+  const [selectedStockStatus, setSelectedStockStatus] = useState<string>("all")
+  const [selectedActiveStatus, setSelectedActiveStatus] = useState<string>("all")
   const router = useRouter()
   const { toast } = useToast()
 
-  const filteredProducts = products.filter(
-    (product) =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.category?.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  // Extract unique categories
+  const categories = useMemo(() => {
+    const cats = new Set<string>()
+    products.forEach((p) => {
+      if (p.category) cats.add(p.category)
+    })
+    return Array.from(cats).sort()
+  }, [products])
+
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      // Search filter
+      const matchesSearch =
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.category?.toLowerCase().includes(searchTerm.toLowerCase())
+
+      // Category filter
+      const matchesCategory =
+        selectedCategory === "all" || product.category === selectedCategory
+
+      // Stock status filter
+      const matchesStockStatus =
+        selectedStockStatus === "all" ||
+        (selectedStockStatus === "in-stock" && product.stock_quantity > 10) ||
+        (selectedStockStatus === "low-stock" && product.stock_quantity > 0 && product.stock_quantity <= 10) ||
+        (selectedStockStatus === "out-of-stock" && product.stock_quantity === 0)
+
+      // Active status filter
+      const matchesActiveStatus =
+        selectedActiveStatus === "all" ||
+        (selectedActiveStatus === "active" && product.is_active) ||
+        (selectedActiveStatus === "inactive" && !product.is_active)
+
+      return matchesSearch && matchesCategory && matchesStockStatus && matchesActiveStatus
+    })
+  }, [products, searchTerm, selectedCategory, selectedStockStatus, selectedActiveStatus])
+
+  const hasActiveFilters = selectedCategory !== "all" || selectedStockStatus !== "all" || selectedActiveStatus !== "all"
+
+  const clearFilters = () => {
+    setSelectedCategory("all")
+    setSelectedStockStatus("all")
+    setSelectedActiveStatus("all")
+  }
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this product?")) return
@@ -79,15 +122,89 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
   return (
     <Card>
       <CardContent className="p-6">
-        <div className="mb-4 flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search products by name, SKU, or category..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
+        <div className="mb-4 space-y-4">
+          {/* Search and Total Count Row */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="relative flex-1 w-full sm:w-auto">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search products by name, SKU, or category..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+              <span className="font-medium text-foreground">
+                Total: <span className="font-semibold">{products.length}</span>
+              </span>
+              {filteredProducts.length !== products.length && (
+                <span className="text-muted-foreground">
+                  | Showing: <span className="font-semibold text-foreground">{filteredProducts.length}</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Filters Row */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Filter className="h-4 w-4" />
+              <span className="font-medium">Filters:</span>
+            </div>
+            
+            {/* Category Filter */}
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Stock Status Filter */}
+            <Select value={selectedStockStatus} onValueChange={setSelectedStockStatus}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Stock Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stock</SelectItem>
+                <SelectItem value="in-stock">In Stock</SelectItem>
+                <SelectItem value="low-stock">Low Stock</SelectItem>
+                <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Active Status Filter */}
+            <Select value={selectedActiveStatus} onValueChange={setSelectedActiveStatus}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Clear Filters Button */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-9 gap-2"
+              >
+                <X className="h-4 w-4" />
+                Clear Filters
+              </Button>
+            )}
           </div>
         </div>
 

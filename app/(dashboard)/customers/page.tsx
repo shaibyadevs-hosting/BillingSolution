@@ -1,6 +1,5 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Plus, Sparkles } from "lucide-react"
 import Link from "next/link"
@@ -12,21 +11,11 @@ import { toast } from "sonner"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
 import { getDatabaseType } from "@/lib/utils/db-mode"
-import { useUserRole } from "@/lib/hooks/use-user-role"
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const router = useRouter()
-  const { isAdmin, isLoading: roleLoading } = useUserRole()
-  const isExcel = false
-
-  // Redirect admin to analytics page
-  useEffect(() => {
-    if (!roleLoading && isAdmin) {
-      router.push("/admin/analytics")
-    }
-  }, [isAdmin, roleLoading, router])
+  const isExcel = getDatabaseType() === "excel"
 
   const initializedRef = useRef(false)
   useEffect(() => {

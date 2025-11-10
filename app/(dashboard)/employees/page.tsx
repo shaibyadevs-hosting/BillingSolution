@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,8 +9,6 @@ import { Plus, Search, Edit2, Trash2, Sparkles, Key, Eye } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { db } from "@/lib/dexie-client"
-import { storageManager } from "@/lib/storage-manager"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useUserRole } from "@/lib/hooks/use-user-role"
@@ -30,7 +28,6 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [storesMap, setStoresMap] = useState<Record<string, any>>({})
   const { toast } = useToast()
   const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole()
   const router = useRouter()
@@ -197,7 +194,6 @@ export default function EmployeesPage() {
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex flex-wrap items-center gap-2 flex-1">
-            <ExcelImport />
             <Button 
               type="button" 
               variant="outline" 
@@ -275,9 +271,9 @@ export default function EmployeesPage() {
                           <span className="text-muted-foreground">Store:</span>
                           <span className="ml-1 text-sm">
                             {emp.stores ? (
-                              <>{emp.stores.name} <span className="text-muted-foreground font-mono">({emp.stores.store_code})</span></>
-                            ) : emp.store_id && storesMap[emp.store_id] ? (
-                              <>{storesMap[emp.store_id].name} <span className="text-muted-foreground font-mono">({storesMap[emp.store_id].store_code})</span></>
+                              <>
+                                {emp.stores.name} <span className="text-muted-foreground font-mono">({emp.stores.store_code})</span>
+                              </>
                             ) : (
                               "N/A"
                             )}
@@ -313,14 +309,6 @@ export default function EmployeesPage() {
                                 if (!confirm(`Reset password for ${emp.name}?`)) return
                                 try {
                                   const newPassword = emp.employee_id || emp.id.slice(0, 4).toUpperCase()
-                                  if (isExcel) {
-                                    await db.employees.update(emp.id, { password: newPassword })
-                                    toast({ title: "Success", description: `Password reset to ${newPassword}` })
-                                  } else {
-                                    const supabase = createClient()
-                                    await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
-                                    toast({ title: "Success", description: `Password reset to ${newPassword}` })
-                                  }
                                   fetchEmployees()
                                 } catch (error: any) {
                                   toast({ title: "Error", description: error.message || "Failed to reset password", variant: "destructive" })
@@ -384,10 +372,6 @@ export default function EmployeesPage() {
                             <span className="text-sm">
                               {emp.stores.name} <span className="text-muted-foreground font-mono">({emp.stores.store_code})</span>
                             </span>
-                          ) : emp.store_id && storesMap[emp.store_id] ? (
-                            <span className="text-sm">
-                              {storesMap[emp.store_id].name} <span className="text-muted-foreground font-mono">({storesMap[emp.store_id].store_code})</span>
-                            </span>
                           ) : (
                             <span className="text-muted-foreground text-sm">N/A</span>
                           )}
@@ -420,14 +404,12 @@ export default function EmployeesPage() {
                                   if (!confirm(`Reset password for ${emp.name} to ${emp.employee_id || emp.id.slice(0, 4).toUpperCase()}?`)) return
                                   try {
                                     const newPassword = emp.employee_id || emp.id.slice(0, 4).toUpperCase()
-                                    if (isExcel) {
-                                      await db.employees.update(emp.id, { password: newPassword })
-                                      toast({ title: "Success", description: `Password reset to ${newPassword}` })
-                                    } else {
-                                      const supabase = createClient()
-                                      await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
-                                      toast({ title: "Success", description: `Password reset to ${newPassword}` })
-                                    }
+                                    const supabase = createClient()
+                                    await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
+                                    toast({ title: "Success", description: `Password reset to ${newPassword}` })
+                                    const supabase = createClient()
+                                    await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
+                                    toast({ title: "Success", description: `Password reset to ${newPassword}` })
                                     fetchEmployees()
                                   } catch (error: any) {
                                     toast({ title: "Error", description: error.message || "Failed to reset password", variant: "destructive" })
