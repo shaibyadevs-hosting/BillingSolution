@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useToast } from "@/hooks/use-toast"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -28,7 +27,6 @@ export default function EmployeeAnalyticsPage() {
   const router = useRouter()
   const { toast } = useToast()
   const { isAdmin, loading: roleLoading } = useUserRole()
-  const isExcel = getDatabaseType() === 'excel'
   const [employees, setEmployees] = useState<EmployeeStats[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [overallStats, setOverallStats] = useState({
@@ -51,44 +49,10 @@ export default function EmployeeAnalyticsPage() {
       setIsLoading(true)
       let employeeStats: EmployeeStats[] = []
 
-      if (isExcel) {
-        const allEmployees = await db.employees.toArray()
-        const allInvoices = await db.invoices.toArray()
-
-        employeeStats = allEmployees.map((emp: any) => {
-          const empInvoices = allInvoices.filter(
-            (inv: any) => inv.created_by_employee_id === emp.employee_id || inv.employee_id === emp.employee_id
-          )
-          const revenue = empInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0)
-          const latestInvoice = empInvoices.sort(
-            (a: any, b: any) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime()
-          )[0]
-
-          return {
-            id: emp.id,
-            name: emp.name,
-            employee_id: emp.employee_id || "N/A",
-            invoiceCount: empInvoices.length,
-            totalRevenue: revenue,
-            avgInvoiceValue: empInvoices.length > 0 ? revenue / empInvoices.length : 0,
-            lastInvoiceDate: latestInvoice ? (latestInvoice.invoice_date || latestInvoice.created_at) : null,
-            is_active: emp.is_active,
-          }
-        })
-
-        setOverallStats({
-          totalEmployees: allEmployees.length,
-          activeEmployees: allEmployees.filter((e: any) => e.is_active).length,
-          totalInvoices: allInvoices.length,
-          totalRevenue: allInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0),
-        })
-      } else {
+      try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          router.push("/auth/login")
-          return
-        }
+        if (!user) throw new Error("No user")
 
         // Fetch employees
         const { data: employeesData } = await supabase
@@ -134,6 +98,35 @@ export default function EmployeeAnalyticsPage() {
           activeEmployees: employeesData.filter((e) => e.is_active).length,
           totalInvoices: invoicesData?.length || 0,
           totalRevenue: (invoicesData || []).reduce((sum, inv) => sum + (inv.total_amount || 0), 0),
+        })
+      } catch {
+        // Fallback to local IndexedDB
+        const allEmployees = await db.employees.toArray()
+        const allInvoices = await db.invoices.toArray()
+        employeeStats = allEmployees.map((emp: any) => {
+          const empInvoices = allInvoices.filter(
+            (inv: any) => inv.created_by_employee_id === emp.employee_id || inv.employee_id === emp.employee_id
+          )
+          const revenue = empInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0)
+          const latestInvoice = empInvoices.sort(
+            (a: any, b: any) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime()
+          )[0]
+          return {
+            id: emp.id,
+            name: emp.name,
+            employee_id: emp.employee_id || "N/A",
+            invoiceCount: empInvoices.length,
+            totalRevenue: revenue,
+            avgInvoiceValue: empInvoices.length > 0 ? revenue / empInvoices.length : 0,
+            lastInvoiceDate: latestInvoice ? (latestInvoice.invoice_date || latestInvoice.created_at) : null,
+            is_active: emp.is_active,
+          }
+        })
+        setOverallStats({
+          totalEmployees: allEmployees.length,
+          activeEmployees: allEmployees.filter((e: any) => e.is_active).length,
+          totalInvoices: allInvoices.length,
+          totalRevenue: allInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0),
         })
       }
 
