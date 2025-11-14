@@ -1,50 +1,113 @@
-// Required for static export
-export async function generateStaticParams() {
-  return []
-}
+"use client"
 
-import { createClient } from "@/lib/supabase/server"
+import { useEffect, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Pencil, Mail, Phone, MapPin, FileText, Receipt } from "lucide-react"
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import { db } from "@/lib/dexie-client"
+import { useToast } from "@/hooks/use-toast"
 
-export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+export default function CustomerDetailPageClient() {
+  const params = useParams()
+  const router = useRouter()
+  const { toast } = useToast()
+  const [customer, setCustomer] = useState<any>(null)
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  useEffect(() => {
+    fetchCustomer()
+    fetchInvoices()
+  }, [params.id])
 
-  const { data: customer } = await supabase.from("customers").select("*").eq("id", id).eq("user_id", user!.id).single()
+  const fetchCustomer = async () => {
+    try {
+      setIsLoading(true)
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-  if (!customer) {
-    notFound()
+      if (!user) {
+        toast({ title: "Error", description: "Please log in to continue", variant: "destructive" })
+        router.push("/login")
+        return
+      }
+
+      const { data: cust, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", params.id)
+        .eq("user_id", user.id)
+        .single()
+
+      if (error || !cust) {
+        // Try to load from local IndexedDB
+        const localCust = await db.customers?.get?.(params.id as string)
+        if (!localCust) {
+          toast({ title: "Error", description: "Customer not found", variant: "destructive" })
+          router.push("/customers")
+          return
+        }
+        setCustomer(localCust)
+      } else {
+        setCustomer(cust)
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to load customer", variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  // Fetch customer's invoices
-  const { data: invoices } = await supabase
-    .from("invoices")
-    .select("*")
-    .eq("customer_id", id)
-    .order("created_at", { ascending: false })
+  const fetchInvoices = async () => {
+    try {
+      const supabase = createClient()
+      const { data: invs, error } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("customer_id", params.id)
+        .order("created_at", { ascending: false })
+
+      if (!error && invs) {
+        setInvoices(invs)
+      } else {
+        // Try Dexie
+        const localInvs = await db.invoices?.where("customer_id").equals(params.id as string).toArray()
+        if (localInvs) {
+          setInvoices(localInvs)
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch invoices:", error)
+    }
+  }
+
+  if (isLoading) {
+    return <div className="text-center py-8">Loading...</div>
+  }
+
+  if (!customer) {
+    return <div className="text-center py-8">Customer not found</div>
+  }
 
   const totalInvoices = invoices?.length || 0
-  const totalRevenue = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0
+  const totalRevenue = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0) || 0
   const paidInvoices = invoices?.filter((inv) => inv.status === "paid").length || 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 md:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{customer.name}</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">{customer.name}</h1>
           <p className="text-muted-foreground">Customer Details</p>
         </div>
         <Button asChild>
-          <Link href={`/customers/${id}/edit`}>
+          <Link href={`/customers/${params.id}/edit`}>
             <Pencil className="mr-2 h-4 w-4" />
             Edit Customer
           </Link>
@@ -163,11 +226,15 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                     <div>
                       <p className="font-medium">{invoice.invoice_number}</p>
                       <p className="text-sm text-muted-foreground">
-                        {new Date(invoice.invoice_date).toLocaleDateString()}
+                        {invoice.invoice_date
+                          ? new Date(invoice.invoice_date).toLocaleDateString()
+                          : invoice.created_at
+                            ? new Date(invoice.created_at).toLocaleDateString()
+                            : "N/A"}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium">₹{Number(invoice.total_amount).toLocaleString("en-IN")}</p>
+                      <p className="font-medium">₹{Number(invoice.total_amount || 0).toLocaleString("en-IN")}</p>
                       <Badge
                         variant={
                           invoice.status === "paid" ? "default" : invoice.status === "sent" ? "secondary" : "outline"
@@ -181,7 +248,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                 ))}
                 {invoices.length > 5 && (
                   <Button asChild variant="outline" className="w-full bg-transparent">
-                    <Link href={`/invoices?customer=${id}`}>View All Invoices</Link>
+                    <Link href={`/invoices?customer=${params.id}`}>View All Invoices</Link>
                   </Button>
                 )}
               </div>
@@ -189,7 +256,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               <div className="py-8 text-center text-muted-foreground">
                 <p>No invoices yet</p>
                 <Button asChild className="mt-4">
-                  <Link href={`/invoices/new?customer=${id}`}>Create Invoice</Link>
+                  <Link href={`/invoices/new?customer=${params.id}`}>Create Invoice</Link>
                 </Button>
               </div>
             )}
@@ -199,3 +266,4 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     </div>
   )
 }
+

@@ -8,7 +8,7 @@
     "dev:next": "next dev",
     "dev:electron": "wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .",
     "build": "next build",
-    "build:export": "cross-env ELECTRON_BUILD=true next build",
+    "build:export": "node scripts/prepare-electron-build.js && cross-env ELECTRON_BUILD=true next build && node scripts/restore-api-routes.js",
     "start": "next start",
     "lint": "eslint .",
     "seed:license": "node scripts/seed-license.js",

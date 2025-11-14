@@ -18,6 +18,8 @@ const nextConfig = {
   ...(isElectronBuild && {
     output: 'export',
     trailingSlash: true,
+    // Skip API routes during static export (they won't work anyway)
+    skipTrailingSlashRedirect: true,
   }),
 }
 

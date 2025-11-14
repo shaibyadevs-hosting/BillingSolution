@@ -1,5 +1,8 @@
 "use client"
 
+// Allow dynamic params for static export
+export const dynamicParams = true
+
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"

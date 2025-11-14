@@ -5,7 +5,7 @@ export async function generateStaticParams() {
 
 import EditEmployeePageClient from './page-client'
 
-export default function EditEmployeePage() {
+export default function EditEmployeePageWrapper() {
   return <EditEmployeePageClient />
 }
 

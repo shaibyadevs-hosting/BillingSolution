@@ -1,3 +1,8 @@
+// Required for static export
+export async function generateStaticParams() {
+  return []
+}
+
 import { createClient } from "@/lib/supabase/server"
 import { ProductForm } from "@/components/features/products/product-form"
 import { notFound } from "next/navigation"
