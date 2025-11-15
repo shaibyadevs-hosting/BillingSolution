@@ -7,15 +7,20 @@
     "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
     "dev:next": "next dev",
     "dev:electron": "wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .",
+    "dev:tauri": "tauri dev",
     "build": "next build",
     "build:export": "node scripts/prepare-electron-build.js && cross-env ELECTRON_BUILD=true next build && node scripts/restore-api-routes.js",
+    "build:tauri": "node scripts/prepare-electron-build.js && cross-env TAURI_BUILD=true next build && node scripts/restore-api-routes.js",
+    "export": "cross-env TAURI_BUILD=true next build",
     "start": "next start",
     "lint": "eslint .",
     "seed:license": "node scripts/seed-license.js",
     "dist": "npm run build:export && electron-builder",
-    "dist:win": "npm run build:export && electron-builder --win",
+    "dist:win": "npm run build:export && electron-builder --win --dir",
     "dist:mac": "npm run build:export && electron-builder --mac",
-    "dist:linux": "npm run build:export && electron-builder --linux"
+    "dist:linux": "npm run build:export && electron-builder --linux",
+    "tauri:build": "tauri build",
+    "tauri:build:win": "cross-env CC=gcc AR=ar tauri build --target x86_64-pc-windows-gnu"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -58,8 +63,6 @@
     "cross-env": "^10.1.0",
     "date-fns": "4.1.0",
     "dexie": "latest",
-    "electron": "^39.1.1",
-    "electron-builder": "^26.0.12",
     "embla-carousel-react": "8.5.1",
     "firebase-admin": "^13.6.0",
     "input-otp": "1.4.1",
@@ -90,6 +93,8 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^39.1.1",
+    "electron-builder": "^26.0.12",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
@@ -98,6 +103,19 @@
   "build": {
     "appId": "com.billingsolutions.app",
     "productName": "Billing Solutions",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "forceCodeSigning": false
+    },
     "directories": {
       "buildResources": "assets",
       "output": "dist"
@@ -123,17 +141,6 @@
         "dmg",
         "zip"
       ]
-    },
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "public/favicon.ico"
     },
     "linux": {
       "target": [

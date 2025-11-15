@@ -15,9 +15,42 @@ if (fs.existsSync(apiDir)) {
     fs.rmSync(apiBackupDir, { recursive: true, force: true });
   }
   
-  // Move API directory to backup
-  fs.renameSync(apiDir, apiBackupDir);
-  console.log('✓ API routes backed up to app/api.backup');
+  // Copy API directory to backup (more reliable than rename on Windows)
+  try {
+    const copyRecursiveSync = (src, dest) => {
+      const exists = fs.existsSync(src);
+      const stats = exists && fs.statSync(src);
+      const isDirectory = exists && stats.isDirectory();
+      if (isDirectory) {
+        if (!fs.existsSync(dest)) {
+          fs.mkdirSync(dest, { recursive: true });
+        }
+        fs.readdirSync(src).forEach(childItemName => {
+          copyRecursiveSync(
+            path.join(src, childItemName),
+            path.join(dest, childItemName)
+          );
+        });
+      } else {
+        fs.copyFileSync(src, dest);
+      }
+    };
+    
+    copyRecursiveSync(apiDir, apiBackupDir);
+    // Remove original after successful copy
+    fs.rmSync(apiDir, { recursive: true, force: true });
+    console.log('✓ API routes backed up to .api-backup');
+  } catch (error) {
+    console.error('Error backing up API routes:', error.message);
+    // If copy fails, try rename as fallback
+    try {
+      fs.renameSync(apiDir, apiBackupDir);
+      console.log('✓ API routes backed up (using rename)');
+    } catch (renameError) {
+      console.error('Failed to backup API routes:', renameError.message);
+      process.exit(1);
+    }
+  }
 } else {
   console.log('⚠ API directory not found, skipping backup');
 }

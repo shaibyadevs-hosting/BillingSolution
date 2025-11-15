@@ -1,13 +1,10 @@
+export async function generateStaticParams() {
+  // Return placeholder for static export - actual routes handled at runtime
+  return [{ id: 'placeholder' }]
+}
+
 import EditEmployeePageClient from './page-client'
 
-// Server component wrapper for static export
-export const dynamicParams = true
-
-export async function generateStaticParams() {
-  return []
-}
-
-export default function EditEmployeePage() {
+export default async function EditEmployeePage() {
   return <EditEmployeePageClient />
 }
-

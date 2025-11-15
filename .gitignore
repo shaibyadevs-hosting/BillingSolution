@@ -38,3 +38,7 @@ app/firebase/*.json
 *.AppImage
 *.deb
 *.rpm
+
+# tauri build artifacts
+/src-tauri/target/
+/.api-backup/

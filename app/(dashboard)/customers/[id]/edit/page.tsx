@@ -1,12 +1,10 @@
-// Server component wrapper for static export
-export const dynamicParams = true
-
 export async function generateStaticParams() {
-  return []
+  // Return placeholder for static export - actual routes handled at runtime
+  return [{ id: 'placeholder' }]
 }
 
 import EditCustomerPageClient from './page-client'
 
-export default function EditCustomerPage() {
+export default async function EditCustomerPage() {
   return <EditCustomerPageClient />
 }
