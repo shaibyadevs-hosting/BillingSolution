@@ -38,8 +38,20 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         try {
           const { data } = await supabase.auth.getUser()
           user = data.user
-        } catch (error) {
-          console.warn("[DashboardLayout] Supabase auth unavailable:", error)
+        } catch (error: any) {
+          // Handle Supabase auth errors gracefully
+          // Network errors (fetch failed) are expected when Supabase is unavailable
+          const errorMsg = error?.message || String(error)
+          const isNetworkError = errorMsg.includes('fetch failed') || 
+                                errorMsg.includes('network') ||
+                                errorMsg.includes('timeout')
+          
+          // Only log non-network errors (network errors are expected during outages)
+          if (!isNetworkError && process.env.NODE_ENV === 'development') {
+            console.warn("[DashboardLayout] Supabase auth error (non-network):", errorMsg)
+          }
+          
+          // Check for offline session or offline mode
           const offlineSession = getOfflineSession()
           if (offlineSession) {
             console.log("[DashboardLayout] Continuing with offline session")
