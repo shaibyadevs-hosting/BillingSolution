@@ -175,14 +175,27 @@ export async function updateSession(request: NextRequest) {
       return supabaseResponse
     }
 
-    // Auth routes - allow access to login page even if authenticated (user can see their status)
-    // Only redirect if explicitly trying to access signup while logged in
+    // Auth routes - signup is publicly accessible (with PIN security)
+    // Other auth routes (login, etc.) are public
     const isSignupRoute = request.nextUrl.pathname.startsWith("/auth/signup")
+    const isAuthRoute = request.nextUrl.pathname.startsWith("/auth/")
+    const isAuthRoot = request.nextUrl.pathname === "/auth"
     
-    if (isSignupRoute && user) {
+    // Handle /auth root path - redirect to login
+    if (isAuthRoot) {
       const url = request.nextUrl.clone()
-      url.pathname = role === "admin" ? "/admin/analytics" : "/dashboard"
+      url.pathname = "/auth/login"
       return NextResponse.redirect(url)
+    }
+    
+    // Signup route is publicly accessible (PIN check happens on page)
+    if (isSignupRoute) {
+      return supabaseResponse
+    }
+
+    // Other auth routes (login, employee-login, customer-login, etc.) - allow without authentication
+    if (isAuthRoute) {
+      return supabaseResponse
     }
 
     return supabaseResponse

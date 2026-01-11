@@ -26,7 +26,6 @@ export default function SettingsPage() {
   const isExcel = false
   const dbType = getDatabaseType()
   const [offlineEnabled, setOfflineEnabled] = useState(false)
-  const [isSwitchingMode, setIsSwitchingMode] = useState(false)
   const { isEmployee } = useUserRole()
 
   useEffect(() => {
@@ -95,176 +94,6 @@ export default function SettingsPage() {
     })()
   }, [isExcel])
 
-  const handleSwitchToSupabase = async (enabled: boolean) => {
-    if (enabled) {
-      // Switching to Supabase mode (user turned switch ON)
-      if (!confirm("Switch to Supabase mode? This will:\n1. Copy all local data to Supabase (one-time migration)\n2. Switch the app to cloud-only mode\n3. Disconnect from IndexedDB\n\nNote: IndexedDB and Supabase are separate plans with separate data storage.\n\nContinue?")) {
-        return
-      }
-    } else {
-      // Switching back to IndexedDB mode (user turned switch OFF)
-      if (!confirm("Switch back to IndexedDB mode? This will disconnect from Supabase and use local storage only.\n\nNote: Data in Supabase will remain but won't be accessible in IndexedDB mode.\n\nContinue?")) {
-        return
-      }
-    }
-
-    setIsSwitchingMode(true)
-    try {
-      if (enabled) {
-        // Switching TO Supabase mode - copy all data (one-time migration)
-        // Copy stores
-        const stores = await db.stores.toArray()
-        if (stores.length > 0) {
-          const { syncStoreToSupabase } = await import("@/lib/utils/supabase-sync")
-          for (const store of stores) {
-            await syncStoreToSupabase(store)
-          }
-        }
-
-        // Copy employees (ensure all are in Supabase)
-        const { syncAllEmployeesToSupabase } = await import("@/lib/utils/supabase-sync")
-        await syncAllEmployeesToSupabase()
-        
-        // Copy products, customers, invoices
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          // Copy products
-          const products = await db.products.toArray()
-          if (products.length > 0) {
-            const productsData = products.map(p => ({
-              ...p,
-              user_id: user.id,
-              created_at: p.created_at || new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }))
-            await supabase.from("products").upsert(productsData, { onConflict: "id" })
-          }
-
-          // Copy customers
-          const customers = await db.customers.toArray()
-          if (customers.length > 0) {
-            const customersData = customers.map(c => ({
-              ...c,
-              user_id: user.id,
-              created_at: c.created_at || new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }))
-            await supabase.from("customers").upsert(customersData, { onConflict: "id" })
-          }
-
-          // Copy invoices and invoice items
-          const invoices = await db.invoices.toArray()
-          if (invoices.length > 0) {
-            const invoicesData = invoices.map(i => ({
-              ...i,
-              user_id: user.id,
-              created_at: i.created_at || new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }))
-            await supabase.from("invoices").upsert(invoicesData, { onConflict: "id" })
-
-            // Copy invoice items
-            for (const invoice of invoices) {
-              const items = await db.invoice_items.where("invoice_id").equals(invoice.id).toArray()
-              if (items.length > 0) {
-                // Delete existing items first to avoid conflicts
-                await supabase.from("invoice_items").delete().eq("invoice_id", invoice.id)
-                
-                // Map items to Supabase schema (no updated_at field, ensure all required fields)
-                const itemsData = items.map(item => ({
-                  id: item.id,
-                  invoice_id: item.invoice_id,
-                  product_id: item.product_id || null,
-                  description: item.description || "",
-                  quantity: Number(item.quantity) || 0,
-                  unit_price: Number(item.unit_price) || 0,
-                  discount_percent: Number(item.discount_percent) || 0,
-                  gst_rate: Number(item.gst_rate) || 0,
-                  hsn_code: item.hsn_code || null,
-                  line_total: Number(item.line_total) || 0,
-                  gst_amount: Number(item.gst_amount) || 0,
-                  created_at: item.created_at || new Date().toISOString(),
-                }))
-                
-                const { error: itemsError } = await supabase
-                  .from("invoice_items")
-                  .insert(itemsData)
-                
-                if (itemsError) {
-                  console.error(`[Settings] Error copying invoice items for invoice ${invoice.id}:`, itemsError)
-                  // Continue with other invoices even if one fails
-                }
-              }
-            }
-          }
-        }
-
-        // Switch to Supabase mode
-        localStorage.setItem('databaseType', 'supabase')
-        
-        // Sync to business_settings for employee inheritance
-        if (user) {
-          const { error: updateError } = await supabase
-            .from("business_settings")
-            .update({ database_mode: 'supabase' })
-            .eq("user_id", user.id)
-          
-          if (updateError) {
-            console.error("[Settings] Error updating database_mode:", updateError)
-          } else {
-            // Clear cache so employees get the update immediately
-            const { clearDatabaseModeCache } = await import("@/lib/utils/db-mode")
-            clearDatabaseModeCache()
-          }
-        }
-        
-        toast({
-          title: "Switched to Supabase Mode",
-          description: "All local data has been copied to Supabase. App is now in cloud-only mode. Employees will inherit this mode.",
-        })
-      } else {
-        // Switching back to IndexedDB mode
-        localStorage.setItem('databaseType', 'indexeddb')
-        
-        // Sync to business_settings for employee inheritance
-        const supabase = createClient()
-        const { data: { user: currentUser } } = await supabase.auth.getUser()
-        if (currentUser) {
-          const { error: updateError } = await supabase
-            .from("business_settings")
-            .update({ database_mode: 'indexeddb' })
-            .eq("user_id", currentUser.id)
-          
-          if (updateError) {
-            console.error("[Settings] Error updating database_mode:", updateError)
-          } else {
-            // Clear cache so employees get the update immediately
-            const { clearDatabaseModeCache } = await import("@/lib/utils/db-mode")
-            clearDatabaseModeCache()
-          }
-        }
-        
-        toast({
-          title: "Switched to IndexedDB Mode",
-          description: "App is now using local storage. Data will be stored locally in IndexedDB. Employees will inherit this mode.",
-        })
-      }
-
-      // Reload to apply changes
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
-    } catch (error: any) {
-      toast({
-        title: "Switch Failed",
-        description: error.message || "Failed to switch database mode",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSwitchingMode(false)
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -426,7 +255,7 @@ export default function SettingsPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <Database className="h-5 w-5" />
-              <CardTitle>Database & Sync</CardTitle>
+              <CardTitle>Database Mode</CardTitle>
             </div>
             <CardDescription>
               {dbType === 'supabase' 
@@ -448,35 +277,13 @@ export default function SettingsPage() {
                     : 'Data stored locally in browser'}
                 </p>
               </div>
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium">Supabase Mode</p>
-                  <p className="text-xs text-muted-foreground">
-                    {dbType === 'supabase' 
-                      ? 'Cloud-only mode - All data stored in Supabase' 
-                      : 'Local mode - Data stored in IndexedDB only (no cloud sync)'}
-                  </p>
-                </div>
-                <Switch
-                  checked={dbType === 'supabase'}
-                  onCheckedChange={handleSwitchToSupabase}
-                  disabled={isSwitchingMode}
-                />
+              <div className="pt-2">
+                <p className="text-xs text-muted-foreground">
+                  {dbType === 'supabase' 
+                    ? 'Database mode is set during admin creation and cannot be changed here. Contact your administrator for changes.' 
+                    : 'Database mode is set during admin creation. IndexedDB mode requires a valid license.'}
+                </p>
               </div>
-              
-              {dbType !== 'supabase' && (
-                <p className="text-xs text-muted-foreground">
-                  Switching to Supabase mode will copy all local data (stores, employees, products, customers, invoices) to cloud storage and switch to cloud-only mode. IndexedDB and Supabase are separate storage plans.
-                </p>
-              )}
-              
-              {dbType === 'supabase' && (
-                <p className="text-xs text-muted-foreground">
-                  All data is automatically saved to Supabase. Switching to IndexedDB mode will disconnect from cloud storage.
-                </p>
-              )}
             </div>
             <div className="mt-6 rounded-lg border bg-muted/30 p-4">
               <div className="flex items-center justify-between">

@@ -1,7 +1,6 @@
 import { db, type License } from "@/lib/db/dexie";
 import { encryptLicenseData, decryptLicenseData } from "./license-encryption";
-import { collection, query, where, getDocs, type QueryConstraint } from "firebase/firestore";
-import { db as firestoreDb } from "@/lib/firebase";
+import { createClient } from "@/lib/supabase/client";
 
 /**
  * Helper to create a timeout promise
@@ -25,37 +24,46 @@ export interface LicenseInfo {
 }
 
 /**
- * Validate license against Firestore
+ * Validate license against Supabase
+ * Only validates licenses for IndexedDB mode admins (Supabase mode doesn't need licenses)
  */
 export async function validateLicenseOnline(
   licenseKey: string,
   macAddress?: string
 ): Promise<{ valid: boolean; licenseData?: LicenseInfo; error?: string }> {
   try {
-    const licensesRef = collection(firestoreDb, "licenses");
-    const constraints: QueryConstraint[] = [
-      where("licenseKey", "==", licenseKey),
-      where("status", "==", "active"),
-    ];
+    const supabase = createClient();
+    
+    // Build query for license
+    let query = supabase
+      .from("licenses")
+      .select("*")
+      .eq("license_key", licenseKey)
+      .eq("status", "active");
 
-    // MAC address verification disabled for testing
+    // MAC address verification (optional for now)
     // if (macAddress) {
-    //   constraints.push(where("macAddress", "==", macAddress));
+    //   query = query.eq("mac_address", macAddress);
     // }
 
-    const q = query(licensesRef, ...constraints);
+    const { data: licenses, error } = await query;
 
-    const querySnapshot = await getDocs(q);
+    if (error) {
+      console.error("Error validating license:", error);
+      return {
+        valid: false,
+        error: error.message || "Failed to validate license. Please check your internet connection.",
+      };
+    }
 
-    if (querySnapshot.empty) {
+    if (!licenses || licenses.length === 0) {
       return { valid: false, error: "License not found or inactive" };
     }
 
-    const licenseDoc = querySnapshot.docs[0];
-    const licenseData = licenseDoc.data();
+    const licenseData = licenses[0];
 
     // Check if license is expired
-    const expiresOn = licenseData.expiresOn?.toDate?.() || new Date(licenseData.expiresOn);
+    const expiresOn = new Date(licenseData.expires_on);
     const now = new Date();
 
     if (expiresOn < now) {
@@ -63,10 +71,10 @@ export async function validateLicenseOnline(
     }
 
     const licenseInfo: LicenseInfo = {
-      licenseKey: licenseData.licenseKey,
-      macAddress: licenseData.macAddress || macAddress || "ANY",
-      clientName: licenseData.clientName || "Unknown",
-      activatedOn: licenseData.activatedOn?.toDate?.()?.toISOString() || licenseData.activatedOn,
+      licenseKey: licenseData.license_key,
+      macAddress: licenseData.mac_address || macAddress || "ANY",
+      clientName: licenseData.client_name || "Unknown",
+      activatedOn: new Date(licenseData.activated_on).toISOString(),
       expiresOn: expiresOn.toISOString(),
       status: licenseData.status,
     };

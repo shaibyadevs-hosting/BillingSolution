@@ -9,6 +9,7 @@ import { useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { getOfflineSession, isOfflineLoginEnabled, saveOfflineSession } from "@/lib/utils/offline-auth"
+import { startSessionExpiryChecker } from "@/lib/utils/session-expiry-checker"
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -147,6 +148,16 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     
     checkAuthAndStore()
   }, [router, pathname])
+
+  // Start session expiry checker (runs every hour for Supabase mode)
+  useEffect(() => {
+    const cleanup = startSessionExpiryChecker(() => {
+      // On expiry, redirect to session expired page
+      router.push("/auth/session-expired")
+    })
+    
+    return cleanup
+  }, [router])
 
   return (
     <StoreProvider>

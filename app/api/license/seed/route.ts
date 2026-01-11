@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { getAdminFirestore, Timestamp } from "@/lib/utils/firebase-admin";
 import { createClient } from "@/lib/supabase/server";
 import { v4 as uuidv4 } from "uuid";
 
-// Force Node.js runtime - Edge runtime doesn't support Firebase Admin SDK
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
@@ -83,75 +80,79 @@ export async function POST(request: Request) {
     // Generate license key (UUID-based)
     const licenseKey = `LICENSE-${normalizedMac.substring(0, 12)}-${uuidv4().substring(0, 8).toUpperCase()}`;
 
-    // Initialize Firebase Admin
-    let firestore;
-    try {
-      firestore = getAdminFirestore();
-    } catch (firebaseError: any) {
-      console.error("[API /license/seed] Firebase Admin initialization error:", firebaseError);
-      return NextResponse.json(
-        {
-          error: "Failed to initialize Firebase Admin. Please check your Firebase credentials configuration.",
-          details: process.env.NODE_ENV === "development" ? firebaseError.message : undefined,
-        },
-        { status: 500 }
-      );
-    }
-
-    const licensesRef = firestore.collection("licenses");
+    // Initialize Supabase client
+    const supabase = await createClient();
 
     // Check if license already exists for this MAC address
-    let existingSnapshot;
-    try {
-      existingSnapshot = await licensesRef
-        .where("macAddress", "==", formattedMac)
-        .limit(1)
-        .get();
-    } catch (firestoreError: any) {
-      console.error("[API /license/seed] Firestore query error:", firestoreError);
+    const { data: existingLicenses, error: queryError } = await supabase
+      .from("licenses")
+      .select("id")
+      .eq("mac_address", formattedMac)
+      .limit(1);
+
+    if (queryError) {
+      console.error("[API /license/seed] Supabase query error:", queryError);
       return NextResponse.json(
         {
-          error: "Failed to query Firestore. Please check your Firebase configuration.",
-          details: process.env.NODE_ENV === "development" ? firestoreError.message : undefined,
+          error: "Failed to query licenses. Please check your Supabase configuration.",
+          details: process.env.NODE_ENV === "development" ? queryError.message : undefined,
         },
         { status: 500 }
       );
     }
 
+    const now = new Date().toISOString();
+    const expiresOn = new Date(Date.now() + finalExpiresInDays * 24 * 60 * 60 * 1000).toISOString();
+
     const licenseData = {
-      licenseKey,
-      macAddress: formattedMac,
-      clientName: finalClientName,
-      activatedOn: Timestamp.now(),
-      expiresOn: Timestamp.fromDate(
-        new Date(Date.now() + finalExpiresInDays * 24 * 60 * 60 * 1000)
-      ),
+      license_key: licenseKey,
+      mac_address: formattedMac,
+      client_name: finalClientName,
+      activated_on: now,
+      expires_on: expiresOn,
       status: "active",
-      createdBy: user?.id || "system", // Use "system" if no user is authenticated
-      createdAt: Timestamp.now(),
+      created_by: user?.id || null,
     };
 
-    let docId: string;
+    let licenseId: string;
     let isUpdate = false;
 
     try {
-      if (!existingSnapshot.empty) {
+      if (existingLicenses && existingLicenses.length > 0) {
         // Update existing license
-        const docRef = existingSnapshot.docs[0].ref;
-        await docRef.update(licenseData);
-        docId = docRef.id;
+        const { data: updated, error: updateError } = await supabase
+          .from("licenses")
+          .update(licenseData)
+          .eq("id", existingLicenses[0].id)
+          .select("id")
+          .single();
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        licenseId = updated.id;
         isUpdate = true;
       } else {
         // Create new license
-        const docRef = await licensesRef.add(licenseData);
-        docId = docRef.id;
+        const { data: created, error: insertError } = await supabase
+          .from("licenses")
+          .insert(licenseData)
+          .select("id")
+          .single();
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        licenseId = created.id;
       }
-    } catch (firestoreError: any) {
-      console.error("[API /license/seed] Firestore write error:", firestoreError);
+    } catch (dbError: any) {
+      console.error("[API /license/seed] Supabase write error:", dbError);
       return NextResponse.json(
         {
-          error: "Failed to save license to Firestore. Please check your Firebase configuration.",
-          details: process.env.NODE_ENV === "development" ? firestoreError.message : undefined,
+          error: "Failed to save license to Supabase. Please check your Supabase configuration.",
+          details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
         },
         { status: 500 }
       );
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
           clientName: finalClientName,
           expiresInDays: finalExpiresInDays,
           status: "active",
-          documentId: docId,
+          id: licenseId,
         },
       },
       { status: isUpdate ? 200 : 201 }

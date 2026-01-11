@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { getAuthSession, clearAuthSession, getSessionDuration } from "@/lib/utils/auth-session"
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode"
+import { getSupabaseSessionRemaining } from "@/lib/utils/session-expiry-checker"
 import { useToast } from "@/hooks/use-toast"
 
 interface SessionCountdown {
@@ -25,6 +27,7 @@ export function useSessionCountdown(): SessionCountdown {
   const [timeLeft, setTimeLeft] = useState<number>(0)
   const [isExpired, setIsExpired] = useState(false)
   const [hasSession, setHasSession] = useState(false)
+  const [sessionDuration, setSessionDuration] = useState<number>(24 * 60 * 60 * 1000) // Default 24 hours
   const router = useRouter()
   const pathname = usePathname()
   const { toast } = useToast()
@@ -60,6 +63,75 @@ export function useSessionCountdown(): SessionCountdown {
     }
 
     try {
+      // Check database mode first
+      const dbMode = await getActiveDbModeAsync()
+      
+      if (dbMode === "supabase") {
+        // Supabase mode: Check based on last_login_time (24 hours)
+        const supabaseDuration = 24 * 60 * 60 * 1000
+        setSessionDuration(supabaseDuration)
+        
+        const remaining = await getSupabaseSessionRemaining()
+        
+        if (remaining === null) {
+          // No session or error
+          setHasSession(false)
+          setIsExpired(true)
+          setTimeLeft(0)
+          return
+        }
+        
+        if (remaining <= 0) {
+          // Session expired
+          setIsExpired(true)
+          setTimeLeft(0)
+          setHasSession(false)
+          
+          // Clear session and redirect
+          await clearAuthSession()
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("authType")
+            localStorage.removeItem("employeeSession")
+            localStorage.removeItem("offlineAdminSession")
+          }
+          
+          toast({
+            title: "Session Expired",
+            description: "Your session has expired (24 hours). Please log in again.",
+            variant: "destructive",
+          })
+          
+          router.push("/auth/session-expired")
+          return
+        }
+        
+        setTimeLeft(remaining)
+        setIsExpired(false)
+        setHasSession(true)
+        
+        // Show warning if expiring soon (only once)
+        if (remaining <= WARNING_THRESHOLD_MS && !warningShownRef.current) {
+          warningShownRef.current = true
+          toast({
+            title: "Session Expiring Soon",
+            description: `Your session will expire in ${formatTime(remaining)}. Please save your work.`,
+            variant: "default",
+          })
+        }
+        
+        // Reset warning flag if time increases
+        if (remaining > WARNING_THRESHOLD_MS) {
+          warningShownRef.current = false
+        }
+        
+        return
+      }
+      
+      // IndexedDB mode: Use existing session duration
+      const indexedDbDuration = getSessionDuration()
+      setSessionDuration(indexedDbDuration)
+      
+      // IndexedDB mode: Use existing session expiry mechanism
       // Only call getAuthSession every 30 seconds to reduce API calls
       // Use cached session for countdown updates between validations
       const now = Date.now()
@@ -188,7 +260,6 @@ export function useSessionCountdown(): SessionCountdown {
     return () => clearInterval(interval)
   }, [checkSession])
 
-  const sessionDuration = getSessionDuration()
   const percentage = sessionDuration > 0 ? Math.max(0, Math.min(100, (timeLeft / sessionDuration) * 100)) : 0
   const isExpiringSoon = timeLeft > 0 && timeLeft <= WARNING_THRESHOLD_MS
 

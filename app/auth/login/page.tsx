@@ -246,6 +246,12 @@ export default function LoginPage() {
         
         const userRole = profile?.role || "admin"
         
+        // Update last login time in user_profiles
+        await supabase
+          .from("user_profiles")
+          .update({ last_login_time: new Date().toISOString() })
+          .eq("id", user.id)
+        
         // Update current user state
         setCurrentUser({ email: user.email, name: user.email })
         setCurrentRole(userRole)

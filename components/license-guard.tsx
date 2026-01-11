@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { checkLicenseOnLaunch, getStoredLicense, isLicenseValid } from "@/lib/utils/license-manager";
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode";
+import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
 
 interface LicenseGuardProps {
@@ -89,6 +91,22 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
       console.log('[LicenseGuard] Starting license verification...');
       
       try {
+        // First, check database mode - Supabase mode doesn't need licenses
+        const dbMode = await getActiveDbModeAsync();
+        if (dbMode === 'supabase') {
+          console.log('[LicenseGuard] Supabase mode detected - no license required (only periodic checks)');
+          if (isMounted) {
+            setChecking(false);
+            setIsValid(true);
+            hasCheckedRef.current = true;
+            licenseCache = { valid: true, timestamp: Date.now() };
+          }
+          return;
+        }
+
+        // For IndexedDB mode, check license
+        console.log('[LicenseGuard] IndexedDB mode detected - license required');
+        
         // First, quickly check if we have a valid stored license (fast path)
         try {
           const storedLicense = await Promise.race([

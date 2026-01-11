@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { getAuthSession, clearAuthSession, isSessionExpired } from "@/lib/utils/auth-session"
 import { createClient } from "@/lib/supabase/client"
+import { startSessionExpiryChecker } from "@/lib/utils/session-expiry-checker"
 import type { AuthSession } from "@/lib/db/dexie"
 
 interface AuthGuardProps {
@@ -22,12 +23,21 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   // Public routes that don't require authentication
   // License seed pages should bypass ALL auth checks - they only need PIN
+  // Signup is publicly accessible (PIN check happens on page)
   const publicRoutes = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/auth/session-expired", "/license", "/"]
   const isPublicRoute = publicRoutes.includes(pathname || "") || (pathname?.startsWith("/i/") ?? false) || (pathname?.startsWith("/admin/license-seed") ?? false)
+  const isAuthRoot = pathname === "/auth"
 
   useEffect(() => {
     const checkAuth = async () => {
-      // Allow public routes through
+      // Handle /auth root - redirect handled by middleware, just allow through
+      if (isAuthRoot) {
+        setIsChecking(false)
+        setIsAuthorized(true)
+        return
+      }
+
+      // Allow public routes through (including signup)
       if (isPublicRoute) {
         setIsChecking(false)
         setIsAuthorized(true)
@@ -206,6 +216,15 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
     checkAuth()
 
+    // Start session expiry checker for Supabase mode (runs every hour)
+    // This checks if 24 hours have passed since last_login_time
+    let expiryCheckerCleanup: (() => void) | null = null
+    if (!isPublicRoute && pathname !== "/auth/login") {
+      expiryCheckerCleanup = startSessionExpiryChecker(() => {
+        router.push("/auth/session-expired")
+      })
+    }
+
     // Set up periodic check every 5 minutes to catch session expiry
     // Reduced frequency significantly to minimize API calls - we use client time for expiry checks
     // Server time API is cached for 30 minutes, so this won't cause excessive API calls
@@ -215,7 +234,12 @@ export function AuthGuard({ children }: AuthGuardProps) {
       }
     }, 300000) // Check every 5 minutes (300000ms) - much less frequent to reduce API calls
 
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      if (expiryCheckerCleanup) {
+        expiryCheckerCleanup()
+      }
+    }
   }, [pathname, router, isPublicRoute])
 
   // Show loading state while checking
