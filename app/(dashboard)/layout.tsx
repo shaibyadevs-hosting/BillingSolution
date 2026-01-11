@@ -16,10 +16,9 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { isFullscreen } = useFullscreen()
   
-  // License seed pages should not use the dashboard layout (no sidebar/header)
-  // This includes both the login and the main license seed page
-  // IMPORTANT: These pages should bypass ALL auth checks - they only need PIN authentication
-  if (pathname?.startsWith("/admin/license-seed")) {
+  // License seed pages and secret admin pages should not use the dashboard layout (no sidebar/header)
+  // These pages should bypass ALL auth checks - they only need PIN authentication
+  if (pathname?.startsWith("/admin/license-seed") || pathname?.startsWith("/admin/ckejwngw242r1")) {
     return <>{children}</>
   }
   
@@ -117,18 +116,15 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             if (supabaseStores && supabaseStores.length > 0) {
               hasStore = true
               storeId = supabaseStores[0].id
-              localStorage.setItem("currentStoreId", storeId)
+              if (storeId) {
+                localStorage.setItem("currentStoreId", storeId)
+              }
             }
           }
           
           // Don't redirect to store setup on every page load
           // Store setup should only happen on first signup, not on every navigation
           // Users can manually navigate to settings/store if they need to set up a store
-          
-          // Store exists - ensure currentStoreId is set in localStorage
-          if (hasStore && storeId) {
-            localStorage.setItem("currentStoreId", storeId)
-          }
           
           // Store exists - ensure currentStoreId is set in localStorage
           if (hasStore && storeId) {
@@ -161,7 +157,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <StoreProvider>
-      <div className={`flex h-screen overflow-hidden ${isFullscreen ? 'fixed inset-0 z-[9999] bg-background' : ''}`}>
+      <div className={`flex h-screen overflow-hidden ${isFullscreen ? 'fixed inset-0 z-9999 bg-background' : ''}`}>
         {!isFullscreen && <Sidebar />}
         <div className={`flex flex-1 flex-col ${isFullscreen ? '' : 'lg:ml-64'} min-w-0`}>
           {!isFullscreen && <Header />}

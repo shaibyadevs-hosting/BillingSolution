@@ -2,6 +2,11 @@
  * Secure Session Management with Cryptographic Signatures
  * Prevents tampering by signing session data with HMAC
  * Uses multiple validation layers to prevent time manipulation
+ * 
+ * NOTE: This file is LEGACY/UNUSED - the active implementation is in auth-session.ts
+ * This file is kept for reference but is not imported or used anywhere in the codebase.
+ * The auth-session.ts implementation includes more advanced security features including
+ * server signature validation and better offline handling.
  */
 
 import { db } from "@/lib/db/dexie"
@@ -40,26 +45,29 @@ function verifySignature(session: AuthSession & { signature?: string }): boolean
     return false
   }
 
-  const sessionData = {
+  const sessionData: Omit<AuthSession, "id"> = {
     userId: session.userId,
     email: session.email,
     role: session.role,
     storeId: session.storeId,
     issuedAt: session.issuedAt,
     expiresAt: session.expiresAt,
+    createdAt: session.createdAt,
   }
 
   const expectedSignature = generateSignature(sessionData)
   return session.signature === expectedSignature
 }
 
-// Cache for server time to reduce API calls
+// Cache for server time to reduce API calls (30 minutes - aligned with auth-session.ts)
 let serverTimeCache: { time: number; timestamp: number } | null = null
-const SERVER_TIME_CACHE_DURATION = 1800000 // Cache for 30 minutes (1800000ms) as requested
+const SERVER_TIME_CACHE_DURATION = 1800000 // Cache for 30 minutes (1800000ms) - aligned with auth-session.ts
 
 /**
  * Get server time from multiple sources to prevent time manipulation
- * CACHED: Only fetches from server if cache is older than 30 seconds
+ * CACHED: Only fetches from server if cache is older than 30 minutes
+ * When online, uses client time to reduce API calls
+ * Offline: Uses client time (we have clock)
  */
 async function getServerTime(): Promise<number> {
   // When online, use client time (we have clock) - no need for server time
@@ -94,14 +102,14 @@ async function getServerTime(): Promise<number> {
         }
       }
     } catch (error) {
-      // API unavailable, use client time
+      // API unavailable, use client time (works offline)
       console.warn("[SecureSession] Server time API unavailable, using client time")
     }
     // Use client time (we have clock when online)
     return Date.now()
   }
 
-  // Offline: Use client time
+  // Offline: Use client time (we have clock)
   return Date.now()
 }
 
@@ -153,6 +161,8 @@ export async function saveSecureAuthSession(data: {
 
 /**
  * Get current authentication session with validation
+ * Offline: Uses client time and signature validation
+ * Online: Uses cached server time (30 min cache) to reduce API calls
  */
 export async function getSecureAuthSession(): Promise<AuthSession | null> {
   try {
@@ -161,14 +171,14 @@ export async function getSecureAuthSession(): Promise<AuthSession | null> {
       return null
     }
 
-    // Validate signature first
+    // Validate signature first (works offline)
     if (!verifySignature(session)) {
       console.error("[SecureSession] Invalid signature detected - possible tampering!")
       await clearSecureAuthSession()
       return null
     }
 
-    // Get server time for validation
+    // Get server time for validation (cached for 30 minutes to reduce API calls)
     const serverTime = await getServerTime()
     const clientTime = Date.now()
     
@@ -179,7 +189,7 @@ export async function getSecureAuthSession(): Promise<AuthSession | null> {
       // Still allow but log warning
     }
 
-    // Use server time if available, otherwise client time
+    // Use server time if available, otherwise client time (works offline)
     const currentTime = serverTime || clientTime
 
     // Check if session is expired
@@ -252,7 +262,7 @@ export async function isSecureSessionExpired(session: AuthSession | null): Promi
     return true
   }
 
-  // Check expiry with server time
+  // Check expiry with server time (cached, reduces API calls)
   const serverTime = await getServerTime()
   return serverTime > session.expiresAt
 }
@@ -299,4 +309,3 @@ export async function refreshSecureSession(): Promise<boolean> {
 
   return false
 }
-

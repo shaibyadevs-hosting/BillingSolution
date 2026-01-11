@@ -24,8 +24,12 @@ export function AuthGuard({ children }: AuthGuardProps) {
   // Public routes that don't require authentication
   // License seed pages should bypass ALL auth checks - they only need PIN
   // Signup is publicly accessible (PIN check happens on page)
+  // Secret admin route uses PIN auth (no Supabase auth required)
   const publicRoutes = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/auth/session-expired", "/license", "/"]
-  const isPublicRoute = publicRoutes.includes(pathname || "") || (pathname?.startsWith("/i/") ?? false) || (pathname?.startsWith("/admin/license-seed") ?? false)
+  const isPublicRoute = publicRoutes.includes(pathname || "") || 
+    (pathname?.startsWith("/i/") ?? false) || 
+    (pathname?.startsWith("/admin/license-seed") ?? false) ||
+    (pathname?.startsWith("/admin/ckejwngw242r1") ?? false)
   const isAuthRoot = pathname === "/auth"
 
   useEffect(() => {

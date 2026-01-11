@@ -28,7 +28,6 @@ export function ServiceWorkerRegister() {
         }
       }
       const registerSW = async () => {
-        try {
           // Check if we're offline and already have a service worker
           const isOnline = navigator.onLine
           const existingRegistrations = await navigator.serviceWorker.getRegistrations()
@@ -139,123 +138,115 @@ export function ServiceWorkerRegister() {
             return
           }
 
-          // Before registering, make absolutely sure there are no existing registrations
+          // Check for existing registrations - only register if none exist or if existing is broken
           const preRegistrations = await navigator.serviceWorker.getRegistrations()
           const preAppRegs = preRegistrations.filter(reg => 
-            reg.scope.startsWith(window.location.origin)
+            reg.scope.startsWith(window.location.origin) &&
+            (reg.active?.scriptURL.includes("sw.js") || reg.installing?.scriptURL.includes("sw.js") || reg.waiting?.scriptURL.includes("sw.js"))
           )
+          
+          // If we have a working registration, don't register again
+          const hasWorkingSW = preAppRegs.some(reg => 
+            reg.active && reg.active.state === "activated"
+          )
+          
+          if (hasWorkingSW) {
+            console.log("[SW] Working service worker already exists, skipping registration")
+            return
+          }
+          
+          // If we have broken registrations, clean them up first
           if (preAppRegs.length > 0) {
-            console.log(`[SW] Found ${preAppRegs.length} existing registration(s), unregistering first...`)
+            console.log(`[SW] Found ${preAppRegs.length} broken registration(s), cleaning up...`)
             for (const reg of preAppRegs) {
               try {
                 await reg.unregister()
-                console.log("[SW] Unregistered existing:", reg.scope)
+                console.log("[SW] Unregistered:", reg.scope)
               } catch (err) {
-                console.warn("[SW] Failed to unregister existing:", err)
+                console.warn("[SW] Failed to unregister:", err)
               }
             }
-            // Wait a moment for unregistration to complete
-            await new Promise(resolve => setTimeout(resolve, 500))
+            // Wait for cleanup to complete
+            await new Promise(resolve => setTimeout(resolve, 1000))
           }
 
-          const registration = await navigator.serviceWorker.register("/sw.js", {
-            scope: "/",
-            updateViaCache: "none", // Always check for updates
-          })
+          // Register service worker with error handling
+          try {
+            const registration = await navigator.serviceWorker.register("/sw.js", {
+              scope: "/",
+              updateViaCache: "none",
+            })
 
-          console.log("[SW] Service Worker registered:", registration.scope)
+            console.log("[SW] Service Worker registered:", registration.scope)
 
-          // Add comprehensive error handlers to catch evaluation errors
-          const handleWorkerError = (worker: ServiceWorker | null, stage: string) => {
-            if (!worker) return
-            
-            // Listen for error events (this catches runtime errors)
-            worker.addEventListener('error', (e: any) => {
-              console.error(`[SW] Service worker error (${stage}):`, {
-                message: e.message || 'Unknown error',
-                filename: e.filename || 'unknown',
-                lineno: e.lineno || 'unknown',
-                colno: e.colno || 'unknown',
-                error: e.error,
-                stack: e.error?.stack
+            // Add comprehensive error handlers to catch evaluation errors
+            const handleWorkerError = (worker: ServiceWorker | null, stage: string) => {
+              if (!worker) return
+              
+              // Listen for error events (this catches runtime errors)
+              worker.addEventListener('error', (e: any) => {
+                console.error(`[SW] Service worker error (${stage}):`, {
+                  message: e.message || 'Unknown error',
+                  filename: e.filename || 'unknown',
+                  lineno: e.lineno || 'unknown',
+                  colno: e.colno || 'unknown',
+                  error: e.error,
+                  stack: e.error?.stack
+                })
               })
-            })
-            
-            // Also listen for unhandled promise rejections in the worker
-            worker.addEventListener('unhandledrejection', (e: any) => {
-              console.error(`[SW] Unhandled rejection in ${stage} worker:`, e.reason)
-            })
-          }
+              
+              // Also listen for unhandled promise rejections in the worker
+              worker.addEventListener('unhandledrejection', (e: any) => {
+                console.error(`[SW] Unhandled rejection in ${stage} worker:`, e.reason)
+              })
+            }
 
-          // Wait for service worker to be ready
-          if (registration.installing) {
-            handleWorkerError(registration.installing, 'installing')
-            registration.installing.addEventListener("statechange", (e) => {
-              const worker = e.target as ServiceWorker
-              if (worker.state === "activated") {
-                console.log("[SW] Service worker activated successfully")
-              } else if (worker.state === "redundant") {
-                console.error("[SW] Service worker became redundant - this usually means an error occurred during installation")
-                // Try to get error information
-                try {
-                  // ServiceWorker doesn't have direct error access, but we can check the registration
-                  console.error("[SW] Check browser DevTools > Application > Service Workers for detailed error")
-                } catch (e) {
-                  // Ignore
-                }
-              }
-            })
-          }
-          
-          if (registration.waiting) {
-            handleWorkerError(registration.waiting, 'waiting')
-          }
-          
-          if (registration.active) {
-            handleWorkerError(registration.active, 'active')
-          }
-
-          // Check for updates
-          registration.addEventListener("updatefound", () => {
-            const newWorker = registration.installing
-            if (newWorker) {
-              newWorker.addEventListener("statechange", () => {
-                if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-                  console.log("[SW] New service worker available")
-                  // Optionally show update notification to user
+            // Wait for service worker to be ready
+            if (registration.installing) {
+              handleWorkerError(registration.installing, 'installing')
+              registration.installing.addEventListener("statechange", (e) => {
+                const worker = e.target as ServiceWorker
+                if (worker.state === "activated") {
+                  console.log("[SW] Service worker activated successfully")
+                } else if (worker.state === "redundant") {
+                  console.error("[SW] Service worker became redundant - check DevTools for details")
                 }
               })
             }
-          })
-
-          // Handle service worker updates
-          let refreshing = false
-          navigator.serviceWorker.addEventListener("controllerchange", () => {
-            if (!refreshing) {
-              refreshing = true
-              console.log("[SW] New service worker activated")
-              // Note: We avoid reload here to maintain offline-first behavior
-              // The new service worker will be active on next page navigation
+            
+            if (registration.waiting) {
+              handleWorkerError(registration.waiting, 'waiting')
             }
-          })
-        } catch (error) {
-          console.error("[SW] Service Worker registration failed:", error)
-          // Log more details about the error
-          if (error instanceof Error) {
-            console.error("[SW] Error details:", {
-              message: error.message,
-              stack: error.stack,
-              name: error.name,
+            
+            if (registration.active) {
+              handleWorkerError(registration.active, 'active')
+            }
+
+            // Check for updates
+            registration.addEventListener("updatefound", () => {
+              const newWorker = registration.installing
+              if (newWorker) {
+                newWorker.addEventListener("statechange", () => {
+                  if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                    console.log("[SW] New service worker available")
+                  }
+                })
+              }
             })
-          } else {
-            // Handle non-Error objects
-            console.error("[SW] Error details (non-Error):", {
-              error,
-              type: typeof error,
-              stringified: String(error),
+
+            // Handle service worker updates
+            let refreshing = false
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+              if (!refreshing) {
+                refreshing = true
+                console.log("[SW] New service worker activated")
+              }
             })
+          } catch (registerError) {
+            console.error("[SW] Service Worker registration failed:", registerError)
+            // Don't throw - allow app to continue without service worker
+            return
           }
-        }
       }
 
       // Register after a short delay to ensure page is fully loaded

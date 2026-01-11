@@ -107,9 +107,11 @@ export async function updateSession(request: NextRequest) {
 
     // Admin-only routes - require Supabase auth with admin role
     // EXCEPT: /admin/license-seed routes use simple key-based auth
+    // EXCEPT: /admin/ckejwngw242r1 routes use PIN-based auth (no Supabase auth required)
     const isLicenseSeedRoute = request.nextUrl.pathname.startsWith("/admin/license-seed")
+    const isSecretAdminRoute = request.nextUrl.pathname.startsWith("/admin/ckejwngw242r1")
     const adminOnlyPaths = ["/admin", "/employees"]
-    const isAdminOnlyRoute = adminOnlyPaths.some((path) => request.nextUrl.pathname.startsWith(path)) && !isLicenseSeedRoute
+    const isAdminOnlyRoute = adminOnlyPaths.some((path) => request.nextUrl.pathname.startsWith(path)) && !isLicenseSeedRoute && !isSecretAdminRoute
     
     // Customer routes
     const isCustomerRoute = request.nextUrl.pathname.startsWith("/customer/")
@@ -129,6 +131,11 @@ export async function updateSession(request: NextRequest) {
     
     // License seed route - allow without authentication (separate from app environment)
     if (isLicenseSeedRoute) {
+      return supabaseResponse
+    }
+
+    // Secret admin route - allow without Supabase auth (uses PIN authentication)
+    if (isSecretAdminRoute) {
       return supabaseResponse
     }
 

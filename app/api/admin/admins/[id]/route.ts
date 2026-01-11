@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-export async function GET(request: Request) {
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   try {
     // Check for PIN-based auth (for secret admin page)
     const pinAuthHeader = request.headers.get("x-pin-auth")
@@ -11,7 +14,7 @@ export async function GET(request: Request) {
     
     let supabase
     
-    // For PIN auth, use service role key to bypass RLS (PIN verified client-side)
+    // For PIN auth, use service role key to bypass RLS
     if (isPinAuth) {
       if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
         return NextResponse.json({ error: "Service role key not configured" }, { status: 500 })
@@ -41,7 +44,6 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
 
-      // Check if current user is admin
       const { data: currentProfile } = await supabase
         .from("user_profiles")
         .select("role, is_active")
@@ -53,42 +55,39 @@ export async function GET(request: Request) {
       }
     }
 
-    // Get all admin profiles
-    const { data: profiles, error: profilesError } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("role", "admin")
-      .order("created_at", { ascending: false })
+    const body = await request.json()
+    const { database_mode, billing_mode, allow_b2b_mode, is_active } = body
 
-    if (profilesError) {
-      throw profilesError
+    // Update user profile
+    const { error: profileError } = await supabase
+      .from("user_profiles")
+      .update({
+        database_mode,
+        billing_mode,
+        allow_b2b_mode,
+        is_active,
+      })
+      .eq("id", params.id)
+
+    if (profileError) {
+      throw profileError
     }
 
-    // Map profiles to admin objects
-    // Email is stored in user_profiles.username field (set during signup)
-    const adminsWithEmail = (profiles || []).map((profile) => {
-      return {
-        id: profile.id,
-        email: profile.username || "N/A", // Username stores email
-        full_name: profile.full_name || "",
-        business_name: profile.business_name || "",
-        business_phone: profile.business_phone || null,
-        business_address: profile.business_address || null,
-        database_mode: profile.database_mode || "indexeddb",
-        billing_mode: profile.billing_mode || "b2c",
-        allow_b2b_mode: profile.allow_b2b_mode || false,
-        is_active: profile.is_active !== false,
-        created_at: profile.created_at,
-        last_login_time: profile.last_login_time || null,
-        created_by_admin_id: profile.created_by_admin_id || null,
-      }
-    })
+    // Update business_settings
+    await supabase
+      .from("business_settings")
+      .upsert({
+        user_id: params.id,
+        database_mode,
+        allow_b2b_mode,
+        is_b2b_enabled: billing_mode === "b2b" || billing_mode === "both",
+      }, { onConflict: "user_id" })
 
-    return NextResponse.json({ admins: adminsWithEmail })
+    return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error("[API /admin/admins] Error:", error)
+    console.error("[API /admin/admins/[id]] Error:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to fetch admins" },
+      { error: error.message || "Failed to update admin" },
       { status: 500 }
     )
   }
