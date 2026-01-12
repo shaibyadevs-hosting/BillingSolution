@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { db } from "@/lib/dexie-client";
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Tooltip as UITooltip,
@@ -46,23 +48,41 @@ export default function SalesReportPage() {
 	const fetchSalesData = async () => {
 		setLoading(true);
 		try {
-			const {
-				data: { user },
-			} = await supabase.auth.getUser();
-			if (!user) return;
+			const dbMode = await getActiveDbModeAsync();
+			const isIndexedDb = dbMode === 'indexeddb';
+			
+			let invoices: any[] = [];
+			
+			if (isIndexedDb) {
+				// IndexedDB mode - load from Dexie (works offline)
+				const allInvoices = await db.invoices.toArray();
+				// Filter by date range
+				invoices = allInvoices.filter((inv) => {
+					const invDate = inv.invoice_date;
+					return invDate >= startDate && invDate <= endDate;
+				});
+			} else {
+				// Supabase mode - load from Supabase
+				const {
+					data: { user },
+				} = await supabase.auth.getUser();
+				if (!user) return;
 
-			const { data: invoices } = await supabase
-				.from("invoices")
-				.select("*")
-				.eq("user_id", user.id)
-				.gte("invoice_date", startDate)
-				.lte("invoice_date", endDate);
+				const { data } = await supabase
+					.from("invoices")
+					.select("*")
+					.eq("user_id", user.id)
+					.gte("invoice_date", startDate)
+					.lte("invoice_date", endDate);
+				
+				invoices = data || [];
+			}
 
 			// Group by date
 			const grouped: Record<string, number> = {};
 			invoices?.forEach((inv) => {
 				const date = inv.invoice_date;
-				grouped[date] = (grouped[date] || 0) + Number(inv.total_amount);
+				grouped[date] = (grouped[date] || 0) + Number(inv.total_amount || 0);
 			});
 
 			const chartData = Object.entries(grouped)

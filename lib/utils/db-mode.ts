@@ -17,13 +17,28 @@ export function clearDatabaseModeCache(): void {
 }
 
 /**
- * Get admin's database mode from business_settings
+ * Get admin's database mode from database (user_profiles.database_mode or business_settings.database_mode)
+ * Database is the source of truth
+ * 
+ * CRITICAL: In IndexedDB mode when offline, immediately fallback to localStorage
+ * to avoid blocking UI with network requests
  */
 async function getAdminDatabaseMode(): Promise<DatabaseMode> {
   // Use cache if recent
   const now = Date.now()
   if (cachedAdminDbMode && (now - cacheTimestamp) < CACHE_DURATION) {
     return cachedAdminDbMode
+  }
+
+  // CRITICAL: If offline, immediately fallback to localStorage (IndexedDB mode works offline)
+  // This prevents blocking UI with failed network requests
+  if (typeof window !== "undefined" && !navigator.onLine) {
+    const v = window.localStorage.getItem('databaseType')
+    const mode = v === 'supabase' ? 'supabase' : 'indexeddb'
+    // Cache the result
+    cachedAdminDbMode = mode
+    cacheTimestamp = now
+    return mode
   }
 
   try {
@@ -47,8 +62,7 @@ async function getAdminDatabaseMode(): Promise<DatabaseMode> {
               .single()
 
             if (store?.admin_user_id) {
-              // Get admin's database_mode from business_settings
-              // Use maybeSingle() to handle case where settings don't exist
+              // Get admin's database_mode from business_settings (source of truth)
               const { data: settings, error: settingsError } = await supabase
                 .from("business_settings")
                 .select("database_mode")
@@ -71,9 +85,28 @@ async function getAdminDatabaseMode(): Promise<DatabaseMode> {
       }
     }
 
-    // For admin users, check their own settings
+    // For admin users, check database (user_profiles.database_mode first, then business_settings)
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
+      // Try user_profiles.database_mode first (preferred source)
+      const { data: profile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("database_mode")
+        .eq("id", user.id)
+        .maybeSingle()
+
+      if (profileError) {
+        console.error("[getAdminDatabaseMode] Error fetching user profile:", profileError)
+      }
+
+      if (profile?.database_mode) {
+        const mode = profile.database_mode as DatabaseMode
+        cachedAdminDbMode = mode
+        cacheTimestamp = now
+        return mode
+      }
+
+      // Fallback to business_settings.database_mode
       const { data: settings, error: settingsError } = await supabase
         .from("business_settings")
         .select("database_mode")
@@ -84,19 +117,35 @@ async function getAdminDatabaseMode(): Promise<DatabaseMode> {
         console.error("[getAdminDatabaseMode] Error fetching admin settings:", settingsError)
       }
 
-      const mode = (settings?.database_mode as DatabaseMode) || 'indexeddb'
+      if (settings?.database_mode) {
+        const mode = settings.database_mode as DatabaseMode
+        cachedAdminDbMode = mode
+        cacheTimestamp = now
+        return mode
+      }
+    }
+  } catch (error) {
+    console.error("[getAdminDatabaseMode] Error fetching admin DB mode:", error)
+    // On error (network failure, etc.), fallback to localStorage immediately
+    // This ensures IndexedDB mode continues working offline
+    if (typeof window !== 'undefined') {
+      const v = window.localStorage.getItem('databaseType')
+      const mode = v === 'supabase' ? 'supabase' : 'indexeddb'
+      // Cache the fallback result
       cachedAdminDbMode = mode
       cacheTimestamp = now
       return mode
     }
-  } catch (error) {
-    console.error("[getAdminDatabaseMode] Error fetching admin DB mode:", error)
   }
 
   // Fallback to localStorage or default
   if (typeof window !== 'undefined') {
     const v = window.localStorage.getItem('databaseType')
-    return v === 'supabase' ? 'supabase' : 'indexeddb'
+    const mode = v === 'supabase' ? 'supabase' : 'indexeddb'
+    // Cache the fallback result
+    cachedAdminDbMode = mode
+    cacheTimestamp = now
+    return mode
   }
   return 'indexeddb'
 }
@@ -112,6 +161,7 @@ async function getAdminDatabaseMode(): Promise<DatabaseMode> {
  * - IndexedDB mode: NEVER access Supabase
  * - Hybrid operations are FORBIDDEN
  * - Employees inherit database mode from admin (via business_settings)
+ * - Database (user_profiles.database_mode or business_settings.database_mode) is the source of truth
  */
 export async function getActiveDbModeAsync(): Promise<DatabaseMode> {
   if (typeof window === 'undefined') return 'indexeddb'
@@ -119,18 +169,18 @@ export async function getActiveDbModeAsync(): Promise<DatabaseMode> {
   // Check if employee session
   const authType = localStorage.getItem("authType")
   if (authType === "employee") {
-    // Employee: inherit from admin
+    // Employee: inherit from admin (reads from business_settings)
     return await getAdminDatabaseMode()
   }
 
-  // Admin: use localStorage (and sync to business_settings)
-  const v = localStorage.getItem('databaseType')
-  const mode = v === 'supabase' ? 'supabase' : 'indexeddb'
+  // Admin: read from database (user_profiles.database_mode or business_settings.database_mode)
+  // Database is the source of truth, not localStorage
+  const mode = await getAdminDatabaseMode()
   
-  // Sync to business_settings (async, non-blocking)
-  syncDatabaseModeToSettings(mode).catch(err => {
-    console.warn("[getActiveDbModeAsync] Failed to sync DB mode to settings:", err)
-  })
+  // Sync to localStorage for backward compatibility (non-blocking)
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('databaseType', mode)
+  }
   
   return mode
 }

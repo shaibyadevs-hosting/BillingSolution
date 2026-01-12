@@ -83,9 +83,6 @@ export default function LandingPage() {
           <Button asChild size="lg" variant="secondary">
             <Link href="/auth/employee-login">Employee Login</Link>
           </Button>
-          <Button asChild size="lg" variant="secondary">
-            <Link href="/auth/customer-login">Customer Login</Link>
-          </Button>
         </div>
       </section>
 

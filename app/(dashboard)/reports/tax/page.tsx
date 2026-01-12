@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { db } from "@/lib/dexie-client";
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Tooltip as UITooltip,
@@ -23,22 +25,35 @@ export default function TaxReportPage() {
 
 	const fetchTaxData = async () => {
 		try {
-			const {
-				data: { user },
-			} = await supabase.auth.getUser();
-			if (!user) return;
+			const dbMode = await getActiveDbModeAsync();
+			const isIndexedDb = dbMode === 'indexeddb';
+			
+			let invoices: any[] = [];
+			
+			if (isIndexedDb) {
+				// IndexedDB mode - load from Dexie (works offline)
+				invoices = await db.invoices.toArray();
+			} else {
+				// Supabase mode - load from Supabase
+				const {
+					data: { user },
+				} = await supabase.auth.getUser();
+				if (!user) return;
 
-			const { data: invoices } = await supabase
-				.from("invoices")
-				.select("*")
-				.eq("user_id", user.id);
+				const { data } = await supabase
+					.from("invoices")
+					.select("*")
+					.eq("user_id", user.id);
+				
+				invoices = data || [];
+			}
 
 			const cgst =
-				invoices?.reduce((sum, inv) => sum + Number(inv.cgst_amount), 0) || 0;
+				invoices?.reduce((sum, inv) => sum + Number(inv.cgst_amount || 0), 0) || 0;
 			const sgst =
-				invoices?.reduce((sum, inv) => sum + Number(inv.sgst_amount), 0) || 0;
+				invoices?.reduce((sum, inv) => sum + Number(inv.sgst_amount || 0), 0) || 0;
 			const igst =
-				invoices?.reduce((sum, inv) => sum + Number(inv.igst_amount), 0) || 0;
+				invoices?.reduce((sum, inv) => sum + Number(inv.igst_amount || 0), 0) || 0;
 			const totalTax = cgst + sgst + igst;
 
 			setTaxData({

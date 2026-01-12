@@ -29,8 +29,19 @@ export default function CustomerDashboardPage() {
       try {
         setLoading(true)
         
-        // Try cloud first, then fallback to local IndexedDB
-        try {
+        // Check database mode to determine data source
+        const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+        const dbMode = await getActiveDbModeAsync()
+        const isIndexedDb = dbMode === 'indexeddb'
+        
+        if (isIndexedDb) {
+          // IndexedDB mode - load from Dexie (works offline)
+          const cust = await db.customers.get(session.customerId)
+          setCustomer(cust)
+          const invs = await db.invoices.where("customer_id").equals(session.customerId).toArray()
+          setInvoices(invs || [])
+        } else {
+          // Supabase mode - load from Supabase
           const supabase = createClient()
           const { data: cust } = await supabase
             .from("customers")
@@ -45,11 +56,6 @@ export default function CustomerDashboardPage() {
             .eq("customer_id", session.customerId)
             .order("created_at", { ascending: false })
           if (invs) setInvoices(invs || [])
-        } catch {
-          const cust = await db.customers.get(session.customerId)
-          setCustomer(cust)
-          const invs = await db.invoices.where("customer_id").equals(session.customerId).toArray()
-          setInvoices(invs || [])
         }
       } catch (error) {
         console.error("Error fetching data:", error)

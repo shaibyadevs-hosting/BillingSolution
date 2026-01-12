@@ -240,11 +240,37 @@ export default function LoginPage() {
       if (user) {
         const { data: profile } = await supabase
           .from("user_profiles")
-          .select("role")
+          .select("role, database_mode")
           .eq("id", user.id)
           .single()
         
         const userRole = profile?.role || "admin"
+        
+        // Set database mode from database (source of truth)
+        // Try user_profiles.database_mode first, then business_settings.database_mode
+        let databaseMode: string | null = profile?.database_mode || null
+        
+        if (!databaseMode) {
+          // Fallback to business_settings.database_mode
+          const { data: settings } = await supabase
+            .from("business_settings")
+            .select("database_mode")
+            .eq("user_id", user.id)
+            .maybeSingle()
+          databaseMode = settings?.database_mode || null
+        }
+        
+        // Set localStorage to match database (database is source of truth)
+        if (databaseMode && typeof window !== 'undefined') {
+          localStorage.setItem('databaseType', databaseMode)
+        } else if (typeof window !== 'undefined') {
+          // Default to indexeddb if not set in database
+          localStorage.setItem('databaseType', 'indexeddb')
+        }
+        
+        // Clear database mode cache to force refresh
+        const { clearDatabaseModeCache } = await import("@/lib/utils/db-mode")
+        clearDatabaseModeCache()
         
         // Update last login time in user_profiles
         await supabase

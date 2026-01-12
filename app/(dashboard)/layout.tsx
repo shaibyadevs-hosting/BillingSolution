@@ -10,6 +10,8 @@ import { useRouter, usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { getOfflineSession, isOfflineLoginEnabled, saveOfflineSession } from "@/lib/utils/offline-auth"
 import { startSessionExpiryChecker } from "@/lib/utils/session-expiry-checker"
+import { checkAdminActivity, getAdminIdFromSession } from "@/lib/utils/check-admin-activity"
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode"
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -29,10 +31,66 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     }
     
     const checkAuthAndStore = async () => {
+      // STEP 1: Get database mode FIRST (enforces separation)
+      const dbMode = typeof window !== "undefined" ? await getActiveDbModeAsync() : "indexeddb"
+      
+      // STEP 2: Check admin activity ONLY if online AND Supabase mode
+      // Skip in IndexedDB mode when offline (offline is first-class)
+      if (dbMode === "supabase" && typeof window !== "undefined" && navigator.onLine) {
+        const adminId = await getAdminIdFromSession()
+        if (adminId) {
+          const isActive = await checkAdminActivity(adminId)
+          if (!isActive) {
+            // Admin inactive - forceLogoutAllSessions already called, just return
+            return
+          }
+        }
+      }
+      
       // Check auth on client side
       const authType = localStorage.getItem("authType")
       if (authType !== "employee") {
-        // Check Supabase auth
+        // In IndexedDB mode, check IndexedDB session FIRST (works offline)
+        if (dbMode === "indexeddb") {
+          // Check IndexedDB session (works offline)
+          const { getAuthSession } = await import("@/lib/utils/auth-session")
+          const indexedDbSession = await getAuthSession()
+          
+          if (indexedDbSession) {
+            console.log("[DashboardLayout] IndexedDB session found, allowing access (IndexedDB mode)")
+            // Continue with IndexedDB session - skip Supabase checks entirely in IndexedDB mode
+            return
+          }
+          
+          // Check offline session as fallback
+          const offlineSession = getOfflineSession()
+          if (offlineSession) {
+            console.log("[DashboardLayout] Offline session found, allowing access (IndexedDB mode)")
+            // Continue with offline session - skip Supabase checks
+            return
+          }
+          
+          // Offline but no session - still allow (IndexedDB mode works offline)
+          if (typeof window !== "undefined" && !navigator.onLine) {
+            console.log("[DashboardLayout] Offline without session (IndexedDB mode); allowing access")
+            // Continue - IndexedDB mode works offline
+            return
+          }
+          
+          // Online but no session - redirect to login
+          console.log("[DashboardLayout] No session found (IndexedDB mode); redirecting to login")
+          router.push("/auth/login")
+          return
+        }
+        
+        // Supabase mode: Check Supabase auth (requires internet)
+        // Only check when online (Supabase mode requires internet)
+        if (typeof window !== "undefined" && !navigator.onLine) {
+          console.warn("[DashboardLayout] Offline in Supabase mode - redirecting to login")
+          router.push("/auth/login")
+          return
+        }
+        
         const supabase = createClient()
         let user = null
         try {
@@ -40,73 +98,37 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
           user = data.user
         } catch (error: any) {
           // Handle Supabase auth errors gracefully
-          // Network errors (fetch failed) are expected when Supabase is unavailable
           const errorMsg = error?.message || String(error)
           const isNetworkError = errorMsg.includes('fetch failed') || 
                                 errorMsg.includes('network') ||
                                 errorMsg.includes('timeout')
           
-          // Only log non-network errors (network errors are expected during outages)
+          // Only log non-network errors
           if (!isNetworkError && process.env.NODE_ENV === 'development') {
             console.warn("[DashboardLayout] Supabase auth error (non-network):", errorMsg)
           }
           
-          // Check for offline session or offline mode
-          const offlineSession = getOfflineSession()
-          if (offlineSession) {
-            console.log("[DashboardLayout] Continuing with offline session")
-            return
-          }
-          if (typeof window !== "undefined" && !navigator.onLine) {
-            console.log("[DashboardLayout] Offline detected; skipping redirect")
-            return
-          }
           router.push("/auth/login")
           return
         }
         if (!user) {
-          const offlineSession = getOfflineSession()
-          if (offlineSession) {
-            console.log("[DashboardLayout] No Supabase user but offline session active")
-            return
-          }
-          if (typeof window !== "undefined" && !navigator.onLine) {
-            console.log("[DashboardLayout] Offline without session; keeping user on page")
-            return
-          }
           router.push("/auth/login")
           return
         }
         
-        // For admin users, check if they have a store
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single()
-        const userRole = profile?.role || "admin"
-        
+        // For admin users in Supabase mode, check if they have a store
+        // (Skip in IndexedDB mode - already handled above)
+        if (dbMode === "supabase") {
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single()
+          const userRole = profile?.role || "admin"
+          
           // Only check store for admin users (not employees, they handle it differently)
-        if ((userRole === "admin" || !profile) && authType !== "employee") {
-          // Check Dexie (local database) FIRST - default storage
-          let hasStore = false
-          let storeId: string | null = null
-          
-          try {
-            const { db } = await import("@/lib/dexie-client")
-            const dexieStores = await db.stores.toArray()
-            if (dexieStores && dexieStores.length > 0) {
-              hasStore = true
-              storeId = dexieStores[0].id
-              localStorage.setItem("currentStoreId", storeId)
-            }
-          } catch (dexieError) {
-            console.warn("[DashboardLayout] Error checking Dexie stores:", dexieError)
-          }
-          
-          // Only check Supabase if database type is set to Supabase
-          const dbType = typeof window !== 'undefined' ? localStorage.getItem('databaseType') : null
-          if (dbType === 'supabase') {
+          if ((userRole === "admin" || !profile) && authType !== "employee") {
+            // Supabase mode: ONLY check Supabase, never Dexie
             const { data: supabaseStores } = await supabase
               .from("stores")
               .select("*")
@@ -114,30 +136,26 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
               .limit(1)
             
             if (supabaseStores && supabaseStores.length > 0) {
-              hasStore = true
-              storeId = supabaseStores[0].id
+              const storeId = supabaseStores[0].id
               if (storeId) {
                 localStorage.setItem("currentStoreId", storeId)
               }
             }
           }
-          
-          // Don't redirect to store setup on every page load
-          // Store setup should only happen on first signup, not on every navigation
-          // Users can manually navigate to settings/store if they need to set up a store
-          
-          // Store exists - ensure currentStoreId is set in localStorage
-          if (hasStore && storeId) {
-            localStorage.setItem("currentStoreId", storeId)
+        } else {
+          // IndexedDB mode: Check Dexie stores (works offline)
+          if (authType !== "employee") {
+            try {
+              const { db } = await import("@/lib/dexie-client")
+              const dexieStores = await db.stores.toArray()
+              if (dexieStores && dexieStores.length > 0) {
+                const storeId = dexieStores[0].id
+                localStorage.setItem("currentStoreId", storeId)
+              }
+            } catch (dexieError) {
+              console.warn("[DashboardLayout] Error checking Dexie stores:", dexieError)
+            }
           }
-        }
-        if (isOfflineLoginEnabled() && user.email) {
-          const storedStoreId = localStorage.getItem("currentStoreId")
-          saveOfflineSession({
-            email: user.email,
-            role: userRole,
-            storeId: storedStoreId,
-          })
         }
       }
     }

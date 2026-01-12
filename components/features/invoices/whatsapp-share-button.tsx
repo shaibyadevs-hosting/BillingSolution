@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	MessageCircle,
@@ -94,6 +94,7 @@ export function WhatsAppShareButton({
 	// const [uploadError, setUploadError] = useState<string | null>(null);
 	const [showStorageRLSErrorModal, setShowStorageRLSErrorModal] = useState(false);
 	const [storageRLSErrorDetails, setStorageRLSErrorDetails] = useState<any>(null);
+	const shareTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	// DORMANT: Server-side toggle removed - Supabase flow uses client-side only
 	// const [useServerSide, setUseServerSide] = useState(() => {
 	// 	if (typeof window !== "undefined") {
@@ -125,10 +126,15 @@ export function WhatsAppShareButton({
 	// R2 flow is now dormant (kept for future fallback)
 	const handleShare = async () => {
 		// Prevent double-clicks and multiple simultaneous shares
-		if (isSharing || isSharingSupabase) {
+		if (isSharing || isSharingSupabase || shareTimeoutRef.current) {
 			console.warn("[WhatsAppShare] Share already in progress, ignoring duplicate click");
 			return;
 		}
+		
+		// Set debounce timeout
+		shareTimeoutRef.current = setTimeout(() => {
+			shareTimeoutRef.current = null;
+		}, 2000); // 2 second debounce
 
 		if (!isOnline) {
 			toast({
@@ -291,6 +297,10 @@ export function WhatsAppShareButton({
 			}
 		} finally {
 			setIsSharing(false);
+			if (shareTimeoutRef.current) {
+				clearTimeout(shareTimeoutRef.current);
+				shareTimeoutRef.current = null;
+			}
 		}
 	};
 
@@ -502,7 +512,7 @@ export function WhatsAppShareButton({
 				errorDetails={storageRLSErrorDetails || {}}
 				onRetry={() => {
 					setShowStorageRLSErrorModal(false);
-					handleShareSupabase();
+					handleShare();
 				}}
 			/>
 			<div className="flex items-center gap-2">

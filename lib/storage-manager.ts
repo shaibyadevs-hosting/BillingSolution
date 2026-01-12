@@ -110,39 +110,50 @@ class StorageManager {
       const { generateInvoiceNumber } = await import("@/lib/utils/invoice-number")
       invoiceNumber = await generateInvoiceNumber(invoice.store_id, invoice.employee_id)
     }
-    await db.invoices.put({ ...invoice, id: invoiceId, invoice_number: invoiceNumber || invoice.invoice_number })
-    // Save invoice items
-    if (items && items.length > 0) {
-      const invoiceItems = items.map(item => ({
-        ...item,
-        id: item.id || crypto.randomUUID(),
-        invoice_id: invoiceId,
-        created_at: item.created_at || new Date().toISOString(),
-      }))
-      await db.invoice_items.bulkPut(invoiceItems)
-    }
+    
+    // Use Dexie transaction for atomicity (invoice + items must save together or not at all)
+    await db.transaction('rw', db.invoices, db.invoice_items, async () => {
+      await db.invoices.put({ ...invoice, id: invoiceId, invoice_number: invoiceNumber || invoice.invoice_number })
+      // Save invoice items
+      if (items && items.length > 0) {
+        const invoiceItems = items.map(item => ({
+          ...item,
+          id: item.id || crypto.randomUUID(),
+          invoice_id: invoiceId,
+          created_at: item.created_at || new Date().toISOString(),
+        }))
+        await db.invoice_items.bulkPut(invoiceItems)
+      }
+    })
+    
     await this.notifySavedWithCounts(true)
   }
 
   async updateInvoice(invoice: any, items: any[]) {
-    await db.invoices.put(invoice)
-    // Update invoice items: delete old ones and add new ones
-    if (items && items.length > 0) {
-      await db.invoice_items.where("invoice_id").equals(invoice.id).delete()
-      const invoiceItems = items.map(item => ({
-        ...item,
-        id: item.id || crypto.randomUUID(),
-        invoice_id: invoice.id,
-        created_at: item.created_at || new Date().toISOString(),
-      }))
-      await db.invoice_items.bulkPut(invoiceItems)
-    }
+    // Use Dexie transaction for atomicity (invoice + items must update together or not at all)
+    await db.transaction('rw', db.invoices, db.invoice_items, async () => {
+      await db.invoices.put(invoice)
+      // Update invoice items: delete old ones and add new ones
+      if (items && items.length > 0) {
+        await db.invoice_items.where("invoice_id").equals(invoice.id).delete()
+        const invoiceItems = items.map(item => ({
+          ...item,
+          id: item.id || crypto.randomUUID(),
+          invoice_id: invoice.id,
+          created_at: item.created_at || new Date().toISOString(),
+        }))
+        await db.invoice_items.bulkPut(invoiceItems)
+      }
+    })
     await this.notifySavedWithCounts(true)
   }
 
   async deleteInvoice(id: string) {
-    await db.invoices.delete(id)
-    await db.invoice_items.where("invoice_id").equals(id).delete()
+    // Use Dexie transaction for atomicity (invoice + items must delete together or not at all)
+    await db.transaction('rw', db.invoices, db.invoice_items, async () => {
+      await db.invoices.delete(id)
+      await db.invoice_items.where("invoice_id").equals(id).delete()
+    })
     await this.notifySavedWithCounts(true)
   }
 
