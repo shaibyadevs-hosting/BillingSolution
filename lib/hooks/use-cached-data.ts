@@ -3,28 +3,41 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
-import { isIndexedDbMode, getActiveDbModeAsync } from "@/lib/utils/db-mode"
-import { getCurrentStoreId } from "@/lib/utils/get-current-store-id"
+import { isIndexedDbMode, getActiveDbModeAsync, getActiveDbMode } from "@/lib/utils/db-mode"
+import { getCurrentStoreId, getCurrentStoreIdSync } from "@/lib/utils/get-current-store-id"
 import { toast } from "sonner"
 
-// Query keys for consistent caching
+// Helper to get stable query key with storeId and dbMode
+// Uses sync versions to avoid async in key calculation
+function getQueryKey(baseKey: string[]): string[] {
+    if (typeof window === "undefined") return baseKey
+    
+    const dbMode = getActiveDbMode()
+    const storeId = getCurrentStoreIdSync()
+    
+    // Include dbMode and storeId in key for proper cache isolation
+    // This ensures queries are cached per store and per database mode
+    return [...baseKey, dbMode, storeId || "no-store"]
+}
+
+// Query keys for consistent caching (with store and dbMode included)
 export const queryKeys = {
-    customers: ["customers"] as const,
-    products: ["products"] as const,
-    invoices: ["invoices"] as const,
-    employees: ["employees"] as const,
-    stores: ["stores"] as const,
-    employee: (id: string) => ["employee", id] as const,
-    customer: (id: string) => ["customer", id] as const,
-    product: (id: string) => ["product", id] as const,
-    invoice: (id: string) => ["invoice", id] as const,
-    store: (id: string) => ["store", id] as const,
+    customers: () => getQueryKey(["customers"]) as readonly string[],
+    products: () => getQueryKey(["products"]) as readonly string[],
+    invoices: () => getQueryKey(["invoices"]) as readonly string[],
+    employees: () => getQueryKey(["employees"]) as readonly string[],
+    stores: () => getQueryKey(["stores"]) as readonly string[],
+    employee: (id: string) => getQueryKey(["employee", id]) as readonly string[],
+    customer: (id: string) => getQueryKey(["customer", id]) as readonly string[],
+    product: (id: string) => getQueryKey(["product", id]) as readonly string[],
+    invoice: (id: string) => getQueryKey(["invoice", id]) as readonly string[],
+    store: (id: string) => getQueryKey(["store", id]) as readonly string[],
 }
 
 // Hook to fetch customers with caching (store-scoped)
 export function useCustomers() {
     return useQuery({
-        queryKey: queryKeys.customers,
+        queryKey: queryKeys.customers(),
         queryFn: async () => {
             // Use async mode detection to properly inherit from admin for employees
             const dbMode = await getActiveDbModeAsync()
@@ -32,16 +45,21 @@ export function useCustomers() {
             const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
-                // IndexedDB: Filter by store_id if available, but include legacy data (null store_id)
-                if (storeId) {
-                    const allCustomers = await db.customers.toArray()
-                    // Include customers with matching store_id OR null/undefined store_id (legacy data)
-                    return allCustomers.filter(
-                        (c) => !c.store_id || c.store_id === storeId
-                    )
+                try {
+                    // IndexedDB: Filter by store_id if available, but include legacy data (null store_id)
+                    if (storeId) {
+                        const allCustomers = await db.customers.toArray()
+                        // Include customers with matching store_id OR null/undefined store_id (legacy data)
+                        return allCustomers.filter(
+                            (c) => !c.store_id || c.store_id === storeId
+                        )
+                    }
+                    // Fallback: Return all (for backward compatibility with legacy data)
+                    return await db.customers.toArray()
+                } catch (error) {
+                    console.error("[useCustomers] Error loading from IndexedDB:", error)
+                    return [] // Return empty array on error (offline mode)
                 }
-                // Fallback: Return all (for backward compatibility with legacy data)
-                return await db.customers.toArray()
             } else {
                 const supabase = createClient()
                 const authType = localStorage.getItem("authType")
@@ -141,13 +159,17 @@ export function useCustomers() {
                 return data || []
             }
         },
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
     })
 }
 
 // Hook to fetch products with caching (store-scoped)
 export function useProducts() {
     return useQuery({
-        queryKey: queryKeys.products,
+        queryKey: queryKeys.products(),
         queryFn: async () => {
             // Use async mode detection to properly inherit from admin for employees
             const dbMode = await getActiveDbModeAsync()
@@ -155,16 +177,21 @@ export function useProducts() {
             const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
-                // IndexedDB: Filter by store_id if available, but include legacy data (null store_id)
-                if (storeId) {
-                    const allProducts = await db.products.toArray()
-                    // Include products with matching store_id OR null/undefined store_id (legacy data)
-                    return allProducts.filter(
-                        (p) => !p.store_id || p.store_id === storeId
-                    )
+                try {
+                    // IndexedDB: Filter by store_id if available, but include legacy data (null store_id)
+                    if (storeId) {
+                        const allProducts = await db.products.toArray()
+                        // Include products with matching store_id OR null/undefined store_id (legacy data)
+                        return allProducts.filter(
+                            (p) => !p.store_id || p.store_id === storeId
+                        )
+                    }
+                    // Fallback: Return all (for backward compatibility with legacy data)
+                    return await db.products.toArray()
+                } catch (error) {
+                    console.error("[useProducts] Error loading from IndexedDB:", error)
+                    return [] // Return empty array on error (offline mode)
                 }
-                // Fallback: Return all (for backward compatibility with legacy data)
-                return await db.products.toArray()
             } else {
                 const supabase = createClient()
                 const authType = localStorage.getItem("authType")
@@ -267,26 +294,35 @@ export function useProducts() {
                 return data || []
             }
         },
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
     })
 }
 
 // Hook to fetch invoices with caching
 export function useInvoices() {
     return useQuery({
-        queryKey: queryKeys.invoices,
+        queryKey: queryKeys.invoices(),
         queryFn: async () => {
             // Use async mode detection to properly inherit from admin for employees
             const dbMode = await getActiveDbModeAsync()
             const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
-                const list = await db.invoices.toArray()
-                const customers = await db.customers.toArray()
-                const customersMap = new Map(customers.map(c => [c.id, c]))
-                return list.map(inv => ({
-                    ...inv,
-                    customers: customersMap.get(inv.customer_id) ? { name: customersMap.get(inv.customer_id)!.name } : null
-                }))
+                try {
+                    const list = await db.invoices.toArray()
+                    const customers = await db.customers.toArray()
+                    const customersMap = new Map(customers.map(c => [c.id, c]))
+                    return list.map(inv => ({
+                        ...inv,
+                        customers: customersMap.get(inv.customer_id) ? { name: customersMap.get(inv.customer_id)!.name } : null
+                    }))
+                } catch (error) {
+                    console.error("[useInvoices] Error loading from IndexedDB:", error)
+                    return [] // Return empty array on error (offline mode)
+                }
             } else {
                 const supabase = createClient()
                 const authType = localStorage.getItem("authType")
@@ -404,20 +440,29 @@ export function useInvoices() {
                 }
             }
         },
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
     })
 }
 
 // Hook to fetch employees with caching
 export function useEmployees() {
     return useQuery({
-        queryKey: queryKeys.employees,
+        queryKey: queryKeys.employees(),
         queryFn: async () => {
             // Use async mode detection to properly inherit from admin for employees
             const dbMode = await getActiveDbModeAsync()
             const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
-                return await db.employees.toArray()
+                try {
+                    return await db.employees.toArray()
+                } catch (error) {
+                    console.error("[useEmployees] Error loading from IndexedDB:", error)
+                    return [] // Return empty array on error (offline mode)
+                }
             } else {
                 const supabase = createClient()
                 const { data: { user } } = await supabase.auth.getUser()
@@ -433,20 +478,29 @@ export function useEmployees() {
                 return data || []
             }
         },
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
     })
 }
 
 // Hook to fetch stores with caching
 export function useStores() {
     return useQuery({
-        queryKey: queryKeys.stores,
+        queryKey: queryKeys.stores(),
         queryFn: async () => {
             // Use async mode detection to properly inherit from admin for employees
             const dbMode = await getActiveDbModeAsync()
             const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
-                return await db.stores.toArray()
+                try {
+                    return await db.stores.toArray()
+                } catch (error) {
+                    console.error("[useStores] Error loading from IndexedDB:", error)
+                    return [] // Return empty array on error (offline mode)
+                }
             } else {
                 const supabase = createClient()
                 const { data: { user } } = await supabase.auth.getUser()
@@ -462,6 +516,10 @@ export function useStores() {
                 return data || []
             }
         },
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
     })
 }
 
@@ -473,7 +531,12 @@ export function useStore(id: string) {
             const isIndexedDb = isIndexedDbMode()
 
             if (isIndexedDb) {
-                return await db.stores.get(id)
+                try {
+                    return await db.stores.get(id) || null
+                } catch (error) {
+                    console.error("[useStore] Error loading from IndexedDB:", error)
+                    return null // Return null on error (offline mode)
+                }
             } else {
                 const supabase = createClient()
                 const { data, error } = await supabase
@@ -487,6 +550,10 @@ export function useStore(id: string) {
             }
         },
         enabled: !!id,
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
     })
 }
 
@@ -500,15 +567,20 @@ export function useEmployee(id: string) {
             const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
-                const employee = await db.employees.get(id)
-                if (!employee) return null
+                try {
+                    const employee = await db.employees.get(id)
+                    if (!employee) return null
 
-                // Get store info if store_id exists
-                if (employee.store_id) {
-                    const store = await db.stores.get(employee.store_id)
-                    return { ...employee, stores: store }
+                    // Get store info if store_id exists
+                    if (employee.store_id) {
+                        const store = await db.stores.get(employee.store_id)
+                        return { ...employee, stores: store }
+                    }
+                    return employee
+                } catch (error) {
+                    console.error("[useEmployee] Error loading from IndexedDB:", error)
+                    return null // Return null on error (offline mode)
                 }
-                return employee
             } else {
                 const supabase = createClient()
                 const { data, error } = await supabase
@@ -535,7 +607,12 @@ export function useCustomer(id: string) {
             const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
-                return await db.customers.get(id)
+                try {
+                    return await db.customers.get(id) || null
+                } catch (error) {
+                    console.error("[useCustomer] Error loading from IndexedDB:", error)
+                    return null // Return null on error (offline mode)
+                }
             } else {
                 const supabase = createClient()
                 const { data, error } = await supabase
@@ -549,6 +626,10 @@ export function useCustomer(id: string) {
             }
         },
         enabled: !!id,
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
     })
 }
 
@@ -562,7 +643,12 @@ export function useProduct(id: string) {
             const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
-                return await db.products.get(id)
+                try {
+                    return await db.products.get(id) || null
+                } catch (error) {
+                    console.error("[useProduct] Error loading from IndexedDB:", error)
+                    return null // Return null on error (offline mode)
+                }
             } else {
                 const supabase = createClient()
                 const { data, error } = await supabase
@@ -589,27 +675,32 @@ export function useInvoice(id: string) {
             const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
-                const invoice = await db.invoices.get(id)
-                if (!invoice) return null
+                try {
+                    const invoice = await db.invoices.get(id)
+                    if (!invoice) return null
 
-                // Get customer info
-                const customer = await db.customers.get(invoice.customer_id)
+                    // Get customer info
+                    const customer = await db.customers.get(invoice.customer_id)
 
-                // Get employee info if invoice was created by employee
-                let employee = null
-                if (invoice.created_by_employee_id || invoice.employee_id) {
-                    const employeeId = invoice.created_by_employee_id || invoice.employee_id
-                    employee = await db.employees.where("employee_id").equals(employeeId).first()
-                }
+                    // Get employee info if invoice was created by employee
+                    let employee = null
+                    if (invoice.created_by_employee_id || invoice.employee_id) {
+                        const employeeId = invoice.created_by_employee_id || invoice.employee_id
+                        employee = await db.employees.where("employee_id").equals(employeeId).first()
+                    }
 
-                // Get invoice items
-                const items = await db.invoice_items.where("invoice_id").equals(id).toArray()
+                    // Get invoice items
+                    const items = await db.invoice_items.where("invoice_id").equals(id).toArray()
 
-                return {
-                    ...invoice,
-                    customers: customer || null,
-                    employees: employee ? { name: employee.name, employee_id: employee.employee_id } : null,
-                    invoice_items: items,
+                    return {
+                        ...invoice,
+                        customers: customer || null,
+                        employees: employee ? { name: employee.name, employee_id: employee.employee_id } : null,
+                        invoice_items: items,
+                    }
+                } catch (error) {
+                    console.error("[useInvoice] Error loading from IndexedDB:", error)
+                    return null // Return null on error (offline mode)
                 }
             } else {
                 const supabase = createClient()
@@ -624,6 +715,10 @@ export function useInvoice(id: string) {
             }
         },
         enabled: !!id,
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
     })
 }
 
@@ -632,16 +727,16 @@ export function useInvalidateQueries() {
     const queryClient = useQueryClient()
 
     return {
-        invalidateCustomers: () => queryClient.invalidateQueries({ queryKey: queryKeys.customers }),
-        invalidateProducts: () => queryClient.invalidateQueries({ queryKey: queryKeys.products }),
-        invalidateInvoices: () => queryClient.invalidateQueries({ queryKey: queryKeys.invoices }),
-        invalidateEmployees: () => queryClient.invalidateQueries({ queryKey: queryKeys.employees }),
-        invalidateStores: () => queryClient.invalidateQueries({ queryKey: queryKeys.stores }),
-        invalidateStore: (id: string) => queryClient.invalidateQueries({ queryKey: queryKeys.store(id) }),
-        invalidateEmployee: (id: string) => queryClient.invalidateQueries({ queryKey: queryKeys.employee(id) }),
-        invalidateCustomer: (id: string) => queryClient.invalidateQueries({ queryKey: queryKeys.customer(id) }),
-        invalidateProduct: (id: string) => queryClient.invalidateQueries({ queryKey: queryKeys.product(id) }),
-        invalidateInvoice: (id: string) => queryClient.invalidateQueries({ queryKey: queryKeys.invoice(id) }),
+        invalidateCustomers: () => queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        invalidateProducts: () => queryClient.invalidateQueries({ queryKey: ["products"] }),
+        invalidateInvoices: () => queryClient.invalidateQueries({ queryKey: ["invoices"] }),
+        invalidateEmployees: () => queryClient.invalidateQueries({ queryKey: ["employees"] }),
+        invalidateStores: () => queryClient.invalidateQueries({ queryKey: ["stores"] }),
+        invalidateStore: (id: string) => queryClient.invalidateQueries({ queryKey: ["store", id] }),
+        invalidateEmployee: (id: string) => queryClient.invalidateQueries({ queryKey: ["employee", id] }),
+        invalidateCustomer: (id: string) => queryClient.invalidateQueries({ queryKey: ["customer", id] }),
+        invalidateProduct: (id: string) => queryClient.invalidateQueries({ queryKey: ["product", id] }),
+        invalidateInvoice: (id: string) => queryClient.invalidateQueries({ queryKey: ["invoice", id] }),
         invalidateAll: () => queryClient.invalidateQueries(),
     }
 }

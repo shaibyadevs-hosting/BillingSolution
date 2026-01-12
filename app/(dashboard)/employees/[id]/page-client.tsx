@@ -59,25 +59,38 @@ export default function EmployeeDetailPageClient() {
 
   const fetchInvoices = async () => {
     try {
-      const supabase = createClient()
-      const { data: invs, error } = await supabase
-        .from("invoices")
-        .select("*")
-        .eq("employee_id", params.id)
-        .order("created_at", { ascending: false })
-        .limit(10)
-
-      if (!error && invs) {
-        setInvoices(invs)
-      } else {
-        // Try Dexie
+      // Check database mode first to use correct source
+      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+      const dbMode = await getActiveDbModeAsync()
+      const isIndexedDb = dbMode === 'indexeddb'
+      
+      if (isIndexedDb) {
+        // IndexedDB mode - load from Dexie (works offline)
         const localInvs = await db.invoices?.where("employee_id").equals(params.id as string).toArray()
         if (localInvs) {
           setInvoices(localInvs)
+        } else {
+          setInvoices([])
+        }
+      } else {
+        // Supabase mode - load from Supabase
+        const supabase = createClient()
+        const { data: invs, error } = await supabase
+          .from("invoices")
+          .select("*")
+          .eq("employee_id", params.id)
+          .order("created_at", { ascending: false })
+          .limit(10)
+
+        if (!error && invs) {
+          setInvoices(invs)
+        } else {
+          setInvoices([])
         }
       }
     } catch (error) {
       console.error("Failed to fetch invoices:", error)
+      setInvoices([])
     }
   }
 
