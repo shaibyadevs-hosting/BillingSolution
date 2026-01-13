@@ -8,13 +8,18 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/license/seed
- * Seeds a license for a given MAC address
+ * Seeds a license for a given MAC address or creates an emergency license
  * 
  * Body: {
- *   macAddress: string (required)
+ *   macAddress: string (required for regular licenses, or "EMERGENCY"/"ANY" for emergency)
  *   clientName?: string (optional, defaults to "Default Client")
  *   expiresInDays?: number (optional, defaults to 365)
+ *   isEmergency?: boolean (optional, if true creates emergency license that works on any machine)
  * }
+ * 
+ * License Types:
+ * - Regular License: Format LICENSE-{MAC12chars}-{UUID8chars}, tied to specific MAC address
+ * - Emergency License: Format EMERGENCY-{UUID12chars}-{UUID8chars}, works on any machine
  */
 export async function POST(request: Request) {
   try {
@@ -65,29 +70,39 @@ export async function POST(request: Request) {
       );
     }
 
-    const { macAddress, clientName, expiresInDays } = body;
+    const { macAddress, clientName, expiresInDays, isEmergency } = body;
 
-    // Validate MAC address
-    if (!macAddress || !macAddress.trim()) {
-      return NextResponse.json(
-        { error: "MAC address is required" },
-        { status: 400 }
-      );
-    }
-
-    // Normalize MAC address (uppercase, remove separators if any)
-    const normalizedMac = macAddress.trim().toUpperCase().replace(/[:-]/g, "");
+    // Check if this is an emergency/master license (works on any machine)
+    const isEmergencyLicense = isEmergency === true || macAddress?.trim().toUpperCase() === "EMERGENCY" || macAddress?.trim().toUpperCase() === "ANY";
     
-    // Validate MAC address format (should be 12 hex characters)
-    if (!/^[0-9A-F]{12}$/.test(normalizedMac)) {
-      return NextResponse.json(
-        { error: "Invalid MAC address format. Expected format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX" },
-        { status: 400 }
-      );
-    }
+    let formattedMac: string;
+    
+    if (isEmergencyLicense) {
+      // Emergency license: use "EMERGENCY" as MAC address (works on any machine)
+      formattedMac = "EMERGENCY";
+    } else {
+      // Regular license: validate MAC address
+      if (!macAddress || !macAddress.trim()) {
+        return NextResponse.json(
+          { error: "MAC address is required (or set isEmergency: true for emergency license)" },
+          { status: 400 }
+        );
+      }
 
-    // Format MAC address with colons for storage
-    const formattedMac = normalizedMac.match(/.{2}/g)?.join(":") || normalizedMac;
+      // Normalize MAC address (uppercase, remove separators if any)
+      const normalizedMac = macAddress.trim().toUpperCase().replace(/[:-]/g, "");
+      
+      // Validate MAC address format (should be 12 hex characters)
+      if (!/^[0-9A-F]{12}$/.test(normalizedMac)) {
+        return NextResponse.json(
+          { error: "Invalid MAC address format. Expected format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX" },
+          { status: 400 }
+        );
+      }
+
+      // Format MAC address with colons for storage
+      formattedMac = normalizedMac.match(/.{2}/g)?.join(":") || normalizedMac;
+    }
 
     // Set defaults
     const finalClientName = clientName?.trim() || "Default Client";
@@ -101,7 +116,14 @@ export async function POST(request: Request) {
     }
 
     // Generate license key (UUID-based)
-    const licenseKey = `LICENSE-${normalizedMac.substring(0, 12)}-${uuidv4().substring(0, 8).toUpperCase()}`;
+    // Special licenses use "SPECIAL" prefix, regular licenses use MAC-based prefix
+    let licenseKey: string;
+    if (isEmergencyLicense) {
+      licenseKey = `SPECIAL-${uuidv4().substring(0, 12).toUpperCase()}-${uuidv4().substring(0, 8).toUpperCase()}`;
+    } else {
+      const normalizedMac = formattedMac.replace(/:/g, "");
+      licenseKey = `LICENSE-${normalizedMac.substring(0, 12)}-${uuidv4().substring(0, 8).toUpperCase()}`;
+    }
 
     // Initialize Supabase client with service role key
     // This bypasses RLS (Row Level Security) which is required for admin operations
@@ -122,12 +144,23 @@ export async function POST(request: Request) {
       }
     );
 
-    // Check if license already exists for this MAC address
-    const { data: existingLicenses, error: queryError } = await supabase
-      .from("licenses")
-      .select("id")
-      .eq("mac_address", formattedMac)
-      .limit(1);
+    // Check if license already exists
+    // For special licenses, we allow multiple (they're universal)
+    // For regular licenses, check by MAC address
+    let existingLicenses: any[] = [];
+    let queryError: any = null;
+    
+    if (!isEmergencyLicense) {
+      // For regular licenses, check if one already exists for this MAC
+      const result = await supabase
+        .from("licenses")
+        .select("id")
+        .eq("mac_address", formattedMac)
+        .limit(1);
+      existingLicenses = result.data || [];
+      queryError = result.error;
+    }
+    // For special licenses, we don't check - allow multiple universal licenses
 
     if (queryError) {
       console.error("[API /license/seed] Supabase query error:", queryError);
@@ -163,12 +196,29 @@ export async function POST(request: Request) {
           .from("licenses")
           .update(licenseData)
           .eq("id", existingLicenses[0].id)
-          .select("id")
+          .select("id, license_key, status")
           .single();
 
         if (updateError) {
+          console.error("[API /license/seed] Update error details:", {
+            message: updateError.message,
+            code: updateError.code,
+            details: updateError.details,
+            hint: updateError.hint,
+            licenseData,
+          });
           throw updateError;
         }
+
+        if (!updated) {
+          throw new Error("License was updated but no data returned");
+        }
+
+        console.log("[API /license/seed] License updated successfully:", {
+          id: updated.id,
+          license_key: updated.license_key,
+          status: updated.status,
+        });
 
         licenseId = updated.id;
         isUpdate = true;
@@ -177,17 +227,35 @@ export async function POST(request: Request) {
         const { data: created, error: insertError } = await supabase
           .from("licenses")
           .insert(licenseData)
-          .select("id")
+          .select("id, license_key, status")
           .single();
 
         if (insertError) {
+          console.error("[API /license/seed] Insert error details:", {
+            message: insertError.message,
+            code: insertError.code,
+            details: insertError.details,
+            hint: insertError.hint,
+            licenseData,
+          });
           throw insertError;
         }
+
+        if (!created) {
+          throw new Error("License was created but no data returned");
+        }
+
+        console.log("[API /license/seed] License created successfully:", {
+          id: created.id,
+          license_key: created.license_key,
+          status: created.status,
+        });
 
         licenseId = created.id;
       }
     } catch (dbError: any) {
       console.error("[API /license/seed] Supabase write error:", dbError);
+      console.error("[API /license/seed] License data that failed:", licenseData);
       
       // Provide more helpful error messages
       let errorMessage = "Failed to save license to Supabase.";

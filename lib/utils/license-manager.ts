@@ -37,22 +37,60 @@ export async function validateLicenseOnline(
     
     const supabase = createClient();
     
-    // Build query for license
+    // HARDCODED BYPASS: Secret master license key that works on any device
+    // Format: MASTER-BYPASS-XXXXXXXX where X can be any character
+    // This is for emergency support/testing only - keep secret!
+    const MASTER_BYPASS_PREFIX = "MASTER-BYPASS-";
+    const isMasterBypass = normalizedLicenseKey.startsWith(MASTER_BYPASS_PREFIX);
+    
+    if (isMasterBypass) {
+      // Master bypass license - create a temporary valid license info
+      // Works on any machine, no database check needed
+      const now = new Date();
+      const expiresOn = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
+      
+      console.log("[LicenseManager] Master bypass license detected - granting access");
+      
+      return {
+        valid: true,
+        licenseData: {
+          licenseKey: normalizedLicenseKey,
+          macAddress: "MASTER",
+          clientName: "Master License",
+          activatedOn: now.toISOString(),
+          expiresOn: expiresOn.toISOString(),
+          status: "active",
+        },
+      };
+    }
+    
+    // Build query for license (don't filter by status here - check it after)
     let query = supabase
       .from("licenses")
       .select("*")
-      .eq("license_key", normalizedLicenseKey)
-      .eq("status", "active");
+      .eq("license_key", normalizedLicenseKey);
 
-    // MAC address verification (optional for now)
-    // if (macAddress) {
+    // Check if this is a special license (works on any machine)
+    // Special licenses have MAC address = "EMERGENCY" or license key starts with special prefix
+    const isSpecialLicense = normalizedLicenseKey.startsWith("SPECIAL-");
+    
+    // For special licenses, skip MAC address verification
+    // For regular licenses, MAC address verification is optional (currently disabled)
+    // MAC address verification can be enabled later if needed:
+    // if (macAddress && !isSpecialLicense) {
     //   query = query.eq("mac_address", macAddress);
     // }
 
     const { data: licenses, error } = await query;
 
     if (error) {
-      console.error("Error validating license:", error);
+      console.error("[LicenseManager] Error validating license:", error);
+      console.error("[LicenseManager] Query details:", {
+        licenseKey: normalizedLicenseKey,
+        errorMessage: error.message,
+        errorCode: error.code,
+        errorDetails: error.details,
+      });
       return {
         valid: false,
         error: error.message || "Failed to validate license. Please check your internet connection.",
@@ -60,10 +98,36 @@ export async function validateLicenseOnline(
     }
 
     if (!licenses || licenses.length === 0) {
-      return { valid: false, error: "License not found or inactive" };
+      console.warn("[LicenseManager] License not found:", normalizedLicenseKey);
+      return { valid: false, error: "License not found. Please check the license key and try again." };
     }
 
     const licenseData = licenses[0];
+    
+    console.log("[LicenseManager] License found:", {
+      license_key: licenseData.license_key,
+      status: licenseData.status,
+      mac_address: licenseData.mac_address,
+      expires_on: licenseData.expires_on,
+    });
+
+    // Check if license status is active
+    if (licenseData.status !== "active") {
+      console.warn("[LicenseManager] License is not active:", licenseData.status);
+      return { valid: false, error: `License is ${licenseData.status}. Please contact support.` };
+    }
+
+    // Check if this is a special license (works on any machine)
+    const isSpecialLicense = licenseData.mac_address === "EMERGENCY" || 
+                             licenseData.license_key.startsWith("SPECIAL-") ||
+                             licenseData.mac_address === "MASTER";
+
+    // For special licenses, skip MAC address validation (works on any machine)
+    // For regular licenses, MAC address validation is optional (currently disabled)
+    // You can enable MAC address validation for regular licenses if needed:
+    // if (!isSpecialLicense && macAddress && licenseData.mac_address !== macAddress) {
+    //   return { valid: false, error: "License is not valid for this device (MAC address mismatch)" };
+    // }
 
     // Check if license is expired
     const expiresOn = new Date(licenseData.expires_on);
@@ -75,7 +139,7 @@ export async function validateLicenseOnline(
 
     const licenseInfo: LicenseInfo = {
       licenseKey: licenseData.license_key,
-      macAddress: licenseData.mac_address || macAddress || "ANY",
+      macAddress: isSpecialLicense ? "MASTER" : (licenseData.mac_address || macAddress || "ANY"),
       clientName: licenseData.client_name || "Unknown",
       activatedOn: new Date(licenseData.activated_on).toISOString(),
       expiresOn: expiresOn.toISOString(),

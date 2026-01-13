@@ -35,6 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 const PIN_SESSION_KEY = "admin_pin_auth"
 const PIN_SESSION_DURATION = 30 * 60 * 1000 // 30 minutes
@@ -69,6 +70,7 @@ export default function SecretAdminPage() {
   const [licenseClientName, setLicenseClientName] = useState("")
   const [licenseExpiresDays, setLicenseExpiresDays] = useState("365")
   const [licenseLoading, setLicenseLoading] = useState(false)
+  const [isEmergencyLicense, setIsEmergencyLicense] = useState(false)
   
   // Create admin form state
   const [newAdminEmail, setNewAdminEmail] = useState("")
@@ -328,13 +330,20 @@ export default function SecretAdminPage() {
   }
 
   const handleCreateLicense = async () => {
-    if (!licenseMacAddress.trim()) {
+    if (!isEmergencyLicense && !licenseMacAddress.trim()) {
       toast({
         title: "Error",
-        description: "MAC address is required",
+        description: "MAC address is required for regular licenses",
         variant: "destructive",
       })
       return
+    }
+    
+    if (isEmergencyLicense) {
+      // Confirm universal license creation
+      if (!confirm("Create Universal License?\n\nThis license will work on any machine.\n\nContinue?")) {
+        return
+      }
     }
 
     setLicenseLoading(true)
@@ -343,9 +352,10 @@ export default function SecretAdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          macAddress: licenseMacAddress,
+          macAddress: isEmergencyLicense ? "EMERGENCY" : licenseMacAddress,
           clientName: licenseClientName || "Default Client",
           expiresInDays: parseInt(licenseExpiresDays) || 365,
+          isEmergency: isEmergencyLicense,
         }),
       })
 
@@ -362,6 +372,7 @@ export default function SecretAdminPage() {
       setLicenseMacAddress("")
       setLicenseClientName("")
       setLicenseExpiresDays("365")
+      setIsEmergencyLicense(false)
       
       // Also show toast for quick feedback
       toast({
@@ -684,6 +695,10 @@ export default function SecretAdminPage() {
                   <CardTitle>License Management</CardTitle>
                   <CardDescription>Create and manage licenses for IndexedDB mode admins</CardDescription>
                 </div>
+                <div className="text-xs text-muted-foreground">
+                  <p className="mb-1">Master Bypass Code (keep secret):</p>
+                  <code className="bg-muted px-2 py-1 rounded text-xs font-mono">MASTER-BYPASS-SUPPORT2024</code>
+                </div>
                 <Dialog open={showLicenseDialog} onOpenChange={setShowLicenseDialog}>
                   <DialogTrigger asChild>
                     <Button>
@@ -697,20 +712,50 @@ export default function SecretAdminPage() {
                       <DialogDescription>Create a new license for IndexedDB mode admins</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="macAddress">MAC Address *</Label>
-                        <Input
-                          id="macAddress"
-                          value={licenseMacAddress}
-                          onChange={(e) => setLicenseMacAddress(e.target.value.toUpperCase().replace(/[^0-9A-F:]/g, ''))}
-                          placeholder="AA:BB:CC:DD:EE:FF"
-                          pattern="^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
-                          className="font-mono uppercase"
+                      <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="emergencyLicense" className="cursor-pointer">
+                            Universal License
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Works on any machine
+                          </p>
+                        </div>
+                        <Switch
+                          id="emergencyLicense"
+                          checked={isEmergencyLicense}
+                          onCheckedChange={(checked) => {
+                            setIsEmergencyLicense(checked)
+                            if (checked) {
+                              setLicenseMacAddress("")
+                            }
+                          }}
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX (12 hex characters)
-                        </p>
                       </div>
+                      {!isEmergencyLicense && (
+                        <div className="space-y-2">
+                          <Label htmlFor="macAddress">MAC Address *</Label>
+                          <Input
+                            id="macAddress"
+                            value={licenseMacAddress}
+                            onChange={(e) => setLicenseMacAddress(e.target.value.toUpperCase().replace(/[^0-9A-F:]/g, ''))}
+                            placeholder="AA:BB:CC:DD:EE:FF"
+                            pattern="^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
+                            className="font-mono uppercase"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX (12 hex characters)
+                          </p>
+                        </div>
+                      )}
+                      {isEmergencyLicense && (
+                        <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
+                          <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          <AlertDescription className="text-blue-800 dark:text-blue-200">
+                            <strong>Universal License:</strong> This license will work on any machine.
+                          </AlertDescription>
+                        </Alert>
+                      )}
                       <div className="space-y-2">
                         <Label htmlFor="clientName">Client Name</Label>
                         <Input
@@ -739,9 +784,18 @@ export default function SecretAdminPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Licenses are required for IndexedDB mode admins. Supabase mode admins don't need licenses.
-              </p>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Licenses are required for IndexedDB mode admins. Supabase mode admins don't need licenses.
+                </p>
+                <div className="rounded-md bg-muted p-3 text-sm">
+                  <p className="font-medium mb-1">License Types:</p>
+                  <ul className="list-disc list-inside space-y-1 text-xs text-muted-foreground">
+                    <li><strong>Regular License:</strong> Tied to a specific MAC address (device-specific)</li>
+                    <li><strong>Emergency License:</strong> Works on any machine (use for support/testing only)</li>
+                  </ul>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -771,6 +825,18 @@ export default function SecretAdminPage() {
                 />
                 <CopyLicenseButton licenseKey={createdLicenseKey} />
               </div>
+              {createdLicenseKey.startsWith("SPECIAL-") ? (
+                <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
+                  <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <AlertDescription className="text-blue-800 dark:text-blue-200 text-xs">
+                    <strong>Universal License:</strong> This license works on any machine.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Regular license tied to specific MAC address.
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Share this license key with the user. They can enter it on the License Activation page.
               </p>
