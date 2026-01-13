@@ -65,6 +65,7 @@ export async function validateLicenseOnline(
     }
     
     // Build query for license (don't filter by status here - check it after)
+    // Try exact match first (case-sensitive)
     let query = supabase
       .from("licenses")
       .select("*")
@@ -81,7 +82,25 @@ export async function validateLicenseOnline(
     //   query = query.eq("mac_address", macAddress);
     // }
 
-    const { data: licenses, error } = await query;
+    let { data: licenses, error } = await query;
+    
+    // If no results, try case-insensitive search using ilike (PostgreSQL)
+    // This handles cases where license might be stored in different case
+    if ((!licenses || licenses.length === 0) && !error) {
+      console.log("[LicenseManager] Exact match not found, trying case-insensitive search...");
+      const caseInsensitiveQuery = supabase
+        .from("licenses")
+        .select("*")
+        .ilike("license_key", normalizedLicenseKey);
+      
+      const result = await caseInsensitiveQuery;
+      licenses = result.data;
+      error = result.error;
+      
+      if (licenses && licenses.length > 0) {
+        console.log("[LicenseManager] Found license with case-insensitive search:", licenses[0].license_key);
+      }
+    }
 
     if (error) {
       console.error("[LicenseManager] Error validating license:", error);
@@ -99,6 +118,29 @@ export async function validateLicenseOnline(
 
     if (!licenses || licenses.length === 0) {
       console.warn("[LicenseManager] License not found:", normalizedLicenseKey);
+      console.warn("[LicenseManager] Searched for:", {
+        exact: normalizedLicenseKey,
+        original: licenseKey,
+        normalized: normalizedLicenseKey,
+      });
+      
+      // Try to find similar licenses for debugging (only in development)
+      if (process.env.NODE_ENV === "development") {
+        try {
+          const debugQuery = supabase
+            .from("licenses")
+            .select("license_key, status, mac_address")
+            .ilike("license_key", `%${normalizedLicenseKey.substring(0, 10)}%`)
+            .limit(5);
+          const debugResult = await debugQuery;
+          if (debugResult.data && debugResult.data.length > 0) {
+            console.log("[LicenseManager] Similar licenses found (for debugging):", debugResult.data);
+          }
+        } catch (debugError) {
+          // Ignore debug errors
+        }
+      }
+      
       return { valid: false, error: "License not found. Please check the license key and try again." };
     }
 

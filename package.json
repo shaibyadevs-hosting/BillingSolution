@@ -57,6 +57,7 @@
 		"crypto-js": "^4.2.0",
 		"date-fns": "4.1.0",
 		"dexie": "latest",
+		"dotenv": "^17.2.3",
 		"embla-carousel-react": "8.5.1",
 		"firebase": "^11.1.0",
 		"firebase-admin": "^13.6.0",
