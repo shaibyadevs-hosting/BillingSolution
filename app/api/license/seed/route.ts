@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { v4 as uuidv4 } from "uuid";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +18,27 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request) {
   try {
+    // Check if Supabase is configured
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      return NextResponse.json(
+        {
+          error: "Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.",
+        },
+        { status: 500 }
+      );
+    }
+
+    // Check if service role key is configured (required for admin operations)
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json(
+        {
+          error: "SUPABASE_SERVICE_ROLE_KEY is not configured. This is required for license creation. Please add it to your environment variables.",
+          hint: "The service role key bypasses RLS (Row Level Security) and is needed for admin operations like license creation.",
+        },
+        { status: 500 }
+      );
+    }
+
     // License seed API is accessible without authentication
     // This allows seeding licenses in a separate environment from the main app
     // Authentication is optional - if user is authenticated, we'll record who created it
@@ -80,8 +103,24 @@ export async function POST(request: Request) {
     // Generate license key (UUID-based)
     const licenseKey = `LICENSE-${normalizedMac.substring(0, 12)}-${uuidv4().substring(0, 8).toUpperCase()}`;
 
-    // Initialize Supabase client
-    const supabase = await createClient();
+    // Initialize Supabase client with service role key
+    // This bypasses RLS (Row Level Security) which is required for admin operations
+    // Service role key is checked above, so we know it exists here
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll() {
+            // No-op for API routes
+          },
+        },
+      }
+    );
 
     // Check if license already exists for this MAC address
     const { data: existingLicenses, error: queryError } = await supabase
@@ -149,10 +188,28 @@ export async function POST(request: Request) {
       }
     } catch (dbError: any) {
       console.error("[API /license/seed] Supabase write error:", dbError);
+      
+      // Provide more helpful error messages
+      let errorMessage = "Failed to save license to Supabase.";
+      if (dbError.message) {
+        if (dbError.message.includes("permission denied") || dbError.message.includes("RLS")) {
+          errorMessage = "Permission denied. Please ensure SUPABASE_SERVICE_ROLE_KEY is configured in your environment variables.";
+        } else if (dbError.message.includes("relation") && dbError.message.includes("does not exist")) {
+          errorMessage = "Licenses table not found. Please run the database migration script.";
+        } else {
+          errorMessage = `Database error: ${dbError.message}`;
+        }
+      }
+      
       return NextResponse.json(
         {
-          error: "Failed to save license to Supabase. Please check your Supabase configuration.",
-          details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+          error: errorMessage,
+          details: process.env.NODE_ENV === "development" ? {
+            message: dbError.message,
+            code: dbError.code,
+            hint: dbError.hint,
+            hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+          } : undefined,
         },
         { status: 500 }
       );
