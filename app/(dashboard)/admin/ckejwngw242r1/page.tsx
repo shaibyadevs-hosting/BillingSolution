@@ -20,7 +20,9 @@ import {
   CheckCircle2,
   XCircle,
   LogOut,
-  Lock
+  Lock,
+  Copy,
+  Check
 } from "lucide-react"
 import {
   Dialog,
@@ -61,6 +63,8 @@ export default function SecretAdminPage() {
   const [editingAdmin, setEditingAdmin] = useState<Admin | null>(null)
   const [showLicenseDialog, setShowLicenseDialog] = useState(false)
   const [showCreateAdminDialog, setShowCreateAdminDialog] = useState(false)
+  const [showLicenseSuccessModal, setShowLicenseSuccessModal] = useState(false)
+  const [createdLicenseKey, setCreatedLicenseKey] = useState<string>("")
   const [licenseMacAddress, setLicenseMacAddress] = useState("")
   const [licenseClientName, setLicenseClientName] = useState("")
   const [licenseExpiresDays, setLicenseExpiresDays] = useState("365")
@@ -351,15 +355,19 @@ export default function SecretAdminPage() {
         throw new Error(data.error || "Failed to create license")
       }
 
-      toast({
-        title: "Success",
-        description: `License created: ${data.license.licenseKey}`,
-      })
-
+      // Store the created license key and show success modal
+      setCreatedLicenseKey(data.license.licenseKey)
       setShowLicenseDialog(false)
+      setShowLicenseSuccessModal(true)
       setLicenseMacAddress("")
       setLicenseClientName("")
       setLicenseExpiresDays("365")
+      
+      // Also show toast for quick feedback
+      toast({
+        title: "Success",
+        description: "License created successfully!",
+      })
     } catch (error: any) {
       toast({
         title: "Error",
@@ -694,10 +702,14 @@ export default function SecretAdminPage() {
                         <Input
                           id="macAddress"
                           value={licenseMacAddress}
-                          onChange={(e) => setLicenseMacAddress(e.target.value)}
+                          onChange={(e) => setLicenseMacAddress(e.target.value.toUpperCase().replace(/[^0-9A-F:]/g, ''))}
                           placeholder="AA:BB:CC:DD:EE:FF"
                           pattern="^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
+                          className="font-mono uppercase"
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX (12 hex characters)
+                        </p>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="clientName">Client Name</Label>
@@ -734,7 +746,93 @@ export default function SecretAdminPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* License Success Modal with Copy Button */}
+      <Dialog open={showLicenseSuccessModal} onOpenChange={setShowLicenseSuccessModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              License Created Successfully!
+            </DialogTitle>
+            <DialogDescription>
+              Your license has been created. Copy the license key below to share with the user.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>License Key</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={createdLicenseKey}
+                  readOnly
+                  className="font-mono text-sm uppercase"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <CopyLicenseButton licenseKey={createdLicenseKey} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Share this license key with the user. They can enter it on the License Activation page.
+              </p>
+            </div>
+            <div className="rounded-md bg-muted p-3 text-sm">
+              <p className="text-muted-foreground mb-1">Instructions:</p>
+              <ol className="list-decimal list-inside space-y-1 text-xs">
+                <li>Share this license key with the user</li>
+                <li>User should go to the License Activation page</li>
+                <li>User enters the license key to activate</li>
+              </ol>
+            </div>
+            <Button
+              onClick={() => setShowLicenseSuccessModal(false)}
+              className="w-full"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+// Copy License Button Component
+function CopyLicenseButton({ licenseKey }: { licenseKey: string }) {
+  const [copied, setCopied] = useState(false)
+  const { toast } = useToast()
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(licenseKey)
+      setCopied(true)
+      toast({
+        title: "Copied!",
+        description: "License key copied to clipboard",
+      })
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to copy license key",
+        variant: "destructive",
+      })
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      onClick={handleCopy}
+      className="shrink-0"
+    >
+      {copied ? (
+        <Check className="h-4 w-4 text-green-600" />
+      ) : (
+        <Copy className="h-4 w-4" />
+      )}
+    </Button>
   )
 }
 

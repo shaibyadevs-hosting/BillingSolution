@@ -235,13 +235,17 @@ export default function LicensePage() {
               <Input
                 id="licenseKey"
                 type="text"
-                placeholder="ABC-123-XYZ"
+                placeholder="LICENSE-XXXXXXXXXXXX-XXXXXXXX"
                 value={licenseKey}
                 onChange={(e) => setLicenseKey(e.target.value)}
                 disabled={loading || success}
                 required
-                className="font-mono"
+                className="font-mono uppercase"
+                style={{ textTransform: 'uppercase' }}
               />
+              <p className="text-xs text-muted-foreground">
+                Format: LICENSE-XXXXXXXXXXXX-XXXXXXXX (case-insensitive)
+              </p>
             </div>
 
             <div className="space-y-2">

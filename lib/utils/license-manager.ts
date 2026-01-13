@@ -32,13 +32,16 @@ export async function validateLicenseOnline(
   macAddress?: string
 ): Promise<{ valid: boolean; licenseData?: LicenseInfo; error?: string }> {
   try {
+    // Normalize license key: trim and uppercase to match creation format
+    const normalizedLicenseKey = licenseKey.trim().toUpperCase();
+    
     const supabase = createClient();
     
     // Build query for license
     let query = supabase
       .from("licenses")
       .select("*")
-      .eq("license_key", licenseKey)
+      .eq("license_key", normalizedLicenseKey)
       .eq("status", "active");
 
     // MAC address verification (optional for now)
@@ -238,7 +241,11 @@ export async function activateLicense(
   email?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const validation = await validateLicenseOnline(licenseKey);
+    // Normalize license key: trim whitespace and convert to uppercase
+    // License keys are created in format: LICENSE-XXXXXXXXXXXX-XXXXXXXX
+    const normalizedLicenseKey = licenseKey.trim().toUpperCase();
+    
+    const validation = await validateLicenseOnline(normalizedLicenseKey);
 
     if (!validation.valid || !validation.licenseData) {
       return {
