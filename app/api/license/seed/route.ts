@@ -215,6 +215,13 @@ export async function POST(request: Request) {
 			created_by: user?.id || null,
 		};
 
+		console.log("[API /license/seed] Creating license with data:", {
+			license_key: licenseKey,
+			mac_address: formattedMac,
+			client_name: finalClientName,
+			expires_on: expiresOn,
+		});
+
 		let licenseId: string;
 		let isUpdate = false;
 
@@ -274,10 +281,12 @@ export async function POST(request: Request) {
 					throw new Error("License was created but no data returned");
 				}
 
-				console.log("[API /license/seed] License created successfully:", {
+				console.log("[API /license/seed] ✅ License created successfully:", {
 					id: created.id,
 					license_key: created.license_key,
+					mac_address: formattedMac,
 					status: created.status,
+					expires_on: expiresOn,
 				});
 
 				licenseId = created.id;

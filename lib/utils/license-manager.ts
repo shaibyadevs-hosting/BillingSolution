@@ -184,7 +184,12 @@ export async function validateLicenseOnline(
 					});
 				} else {
 					console.log("[LicenseManager] No similar licenses found in database");
-					console.log("[LicenseManager] This suggests the license was never created or is in a different database");
+					console.log("[LicenseManager] ⚠️  IMPORTANT: This suggests the license was never created or is in a different database");
+					console.log("[LicenseManager] 📝 SOLUTION: Create the license first using:");
+					console.log("[LicenseManager]    - POST /api/license/seed endpoint");
+					console.log("[LicenseManager]    - Or the admin panel at /admin/ckejwngw242r1");
+					console.log("[LicenseManager]    - With MAC address:", macAddress || "the device's MAC address");
+					console.log("[LicenseManager]    - The generated license key must be used exactly as provided");
 				}
 			} catch (debugError: any) {
 				console.error("[LicenseManager] Error during debug search:", debugError.message);
@@ -193,7 +198,7 @@ export async function validateLicenseOnline(
 			console.log("=".repeat(80));
 			return {
 				valid: false,
-				error: "License not found. Please check the license key and try again.",
+				error: "License not found. Please check the license key and try again. If you just created the license, make sure it was saved to the database successfully. Use POST /api/license/seed to create licenses.",
 			};
 		}
 
