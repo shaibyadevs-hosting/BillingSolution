@@ -31,9 +31,17 @@ export async function validateLicenseOnline(
 	licenseKey: string,
 	macAddress?: string
 ): Promise<{ valid: boolean; licenseData?: LicenseInfo; error?: string }> {
+	console.log("=".repeat(80));
+	console.log("[LicenseManager] ===== LICENSE VALIDATION STARTED =====");
+	console.log("=".repeat(80));
+	console.log("[LicenseManager] Input Data:");
+	console.log("  - License Key (raw):", licenseKey);
+	console.log("  - MAC Address (raw):", macAddress || "not provided");
+
 	try {
 		// Normalize license key: trim and uppercase to match creation format
 		const normalizedLicenseKey = licenseKey.trim().toUpperCase();
+		console.log("[LicenseManager] Normalized License Key:", normalizedLicenseKey);
 
 		const supabase = createClient();
 
@@ -51,7 +59,7 @@ export async function validateLicenseOnline(
 			const expiresOn = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
 
 			console.log(
-				"[LicenseManager] Master bypass license detected - granting access"
+				"[LicenseManager] ✅ Master bypass license detected - granting access"
 			);
 
 			return {
@@ -67,8 +75,27 @@ export async function validateLicenseOnline(
 			};
 		}
 
+		// Extract device ID from license for matching later
+		let deviceIdFromLicense: string | null = null;
+		const licenseParts = normalizedLicenseKey.split("-");
+		if (licenseParts.length >= 2 && licenseParts[0] === "LICENSE") {
+			deviceIdFromLicense = licenseParts[1];
+			console.log("[LicenseManager] Device ID extracted from license:", deviceIdFromLicense);
+		}
+
+		// Normalize MAC address if provided
+		let normalizedDeviceMac: string | null = null;
+		if (macAddress) {
+			normalizedDeviceMac = macAddress.trim().toUpperCase().replace(/[:-]/g, "");
+			console.log("[LicenseManager] Normalized Device MAC:", normalizedDeviceMac);
+		}
+
 		// Build query for license (don't filter by status here - check it after)
 		// Try exact match first (case-sensitive)
+		console.log("[LicenseManager] Querying database...");
+		console.log("  - Table: licenses");
+		console.log("  - Filter: license_key =", normalizedLicenseKey);
+
 		let query = supabase
 			.from("licenses")
 			.select("*")
@@ -86,11 +113,15 @@ export async function validateLicenseOnline(
 
 		let { data: licenses, error } = await query;
 
+		console.log("[LicenseManager] Database Query Result:");
+		console.log("  - Error:", error ? error.message : "none");
+		console.log("  - Licenses found:", licenses?.length || 0);
+
 		// If no results, try case-insensitive search using ilike (PostgreSQL)
 		// This handles cases where license might be stored in different case
 		if ((!licenses || licenses.length === 0) && !error) {
 			console.log(
-				"[LicenseManager] Exact match not found, trying case-insensitive search..."
+				"[LicenseManager] ⚠️  Exact match not found, trying case-insensitive search..."
 			);
 			const caseInsensitiveQuery = supabase
 				.from("licenses")
@@ -101,22 +132,27 @@ export async function validateLicenseOnline(
 			licenses = result.data;
 			error = result.error;
 
+			console.log("[LicenseManager] Case-insensitive search result:");
+			console.log("  - Error:", error ? error.message : "none");
+			console.log("  - Licenses found:", licenses?.length || 0);
+
 			if (licenses && licenses.length > 0) {
 				console.log(
-					"[LicenseManager] Found license with case-insensitive search:",
+					"[LicenseManager] ✅ Found license with case-insensitive search:",
 					licenses[0].license_key
 				);
 			}
 		}
 
 		if (error) {
-			console.error("[LicenseManager] Error validating license:", error);
-			console.error("[LicenseManager] Query details:", {
-				licenseKey: normalizedLicenseKey,
-				errorMessage: error.message,
-				errorCode: error.code,
-				errorDetails: error.details,
-			});
+			console.error("[LicenseManager] ❌ Database Error:");
+			console.error("  - Message:", error.message);
+			console.error("  - Code:", error.code);
+			console.error("  - Details:", error.details);
+			console.error("  - Hint:", error.hint);
+			console.error("[LicenseManager] Query that failed:");
+			console.error("  - License Key:", normalizedLicenseKey);
+			console.log("=".repeat(80));
 			return {
 				valid: false,
 				error:
@@ -126,33 +162,35 @@ export async function validateLicenseOnline(
 		}
 
 		if (!licenses || licenses.length === 0) {
-			console.warn("[LicenseManager] License not found:", normalizedLicenseKey);
-			console.warn("[LicenseManager] Searched for:", {
-				exact: normalizedLicenseKey,
-				original: licenseKey,
-				normalized: normalizedLicenseKey,
-			});
+			console.warn("[LicenseManager] ❌ LICENSE NOT FOUND IN DATABASE");
+			console.warn("[LicenseManager] Search Details:");
+			console.warn("  - Original License Key:", licenseKey);
+			console.warn("  - Normalized License Key:", normalizedLicenseKey);
+			console.warn("  - Search Type: Exact match (case-sensitive) + Case-insensitive");
 
-			// Try to find similar licenses for debugging (only in development)
-			if (process.env.NODE_ENV === "development") {
-				try {
-					const debugQuery = supabase
-						.from("licenses")
-						.select("license_key, status, mac_address")
-						.ilike("license_key", `%${normalizedLicenseKey.substring(0, 10)}%`)
-						.limit(5);
-					const debugResult = await debugQuery;
-					if (debugResult.data && debugResult.data.length > 0) {
-						console.log(
-							"[LicenseManager] Similar licenses found (for debugging):",
-							debugResult.data
-						);
-					}
-				} catch (debugError) {
-					// Ignore debug errors
+			// Try to find similar licenses for debugging (always show in console)
+			try {
+				console.log("[LicenseManager] 🔍 Searching for similar licenses...");
+				const debugQuery = supabase
+					.from("licenses")
+					.select("license_key, status, mac_address, expires_on")
+					.ilike("license_key", `%${normalizedLicenseKey.substring(0, 15)}%`)
+					.limit(10);
+				const debugResult = await debugQuery;
+				if (debugResult.data && debugResult.data.length > 0) {
+					console.log("[LicenseManager] Found similar licenses:");
+					debugResult.data.forEach((license, index) => {
+						console.log(`  ${index + 1}. ${license.license_key} (${license.status}) - MAC: ${license.mac_address}`);
+					});
+				} else {
+					console.log("[LicenseManager] No similar licenses found in database");
+					console.log("[LicenseManager] This suggests the license was never created or is in a different database");
 				}
+			} catch (debugError: any) {
+				console.error("[LicenseManager] Error during debug search:", debugError.message);
 			}
 
+			console.log("=".repeat(80));
 			return {
 				valid: false,
 				error: "License not found. Please check the license key and try again.",
@@ -161,24 +199,28 @@ export async function validateLicenseOnline(
 
 		const licenseData = licenses[0];
 
-		console.log("[LicenseManager] License found:", {
-			license_key: licenseData.license_key,
-			status: licenseData.status,
-			mac_address: licenseData.mac_address,
-			expires_on: licenseData.expires_on,
-		});
+		console.log("[LicenseManager] ✅ LICENSE FOUND IN DATABASE");
+		console.log("[LicenseManager] License Data from DB:");
+		console.log("  - License Key:", licenseData.license_key);
+		console.log("  - MAC Address (stored):", licenseData.mac_address);
+		console.log("  - Client Name:", licenseData.client_name);
+		console.log("  - Status:", licenseData.status);
+		console.log("  - Activated On:", licenseData.activated_on);
+		console.log("  - Expires On:", licenseData.expires_on);
 
 		// Check if license status is active
+		console.log("[LicenseManager] Validating license status...");
 		if (licenseData.status !== "active") {
-			console.warn(
-				"[LicenseManager] License is not active:",
-				licenseData.status
-			);
+			console.warn("[LicenseManager] ❌ LICENSE STATUS CHECK FAILED");
+			console.warn("  - Current Status:", licenseData.status);
+			console.warn("  - Required Status: active");
+			console.log("=".repeat(80));
 			return {
 				valid: false,
 				error: `License is ${licenseData.status}. Please contact support.`,
 			};
 		}
+		console.log("[LicenseManager] ✅ License status is active");
 
 		// Check if this is a special license (works on any machine)
 		const isSpecialLicenseData =
@@ -186,49 +228,66 @@ export async function validateLicenseOnline(
 			licenseData.license_key.startsWith("SPECIAL-") ||
 			licenseData.mac_address === "MASTER";
 
+		console.log("[LicenseManager] License Type:", isSpecialLicenseData ? "Special (works on any device)" : "Regular (device-specific)");
+
 		// For special licenses, skip MAC address validation (works on any machine)
 		// For regular licenses, validate MAC address by comparing device ID extracted from license
 		// with the requesting device's MAC address
 		if (!isSpecialLicenseData && macAddress) {
+			console.log("[LicenseManager] Validating device ID/MAC address...");
+			console.log("[LicenseManager] MAC Address Comparison:");
+			console.log("  - Device ID from License:", deviceIdFromLicense);
+			console.log("  - Device MAC (normalized):", normalizedDeviceMac);
+			console.log("  - MAC Address in DB:", licenseData.mac_address);
+
 			// Extract device ID from license key (format: LICENSE-{12_CHAR_DEVICE_ID}-{UUID})
-			const licenseParts = normalizedLicenseKey.split("-");
-			if (licenseParts.length >= 2) {
-				const deviceIdFromLicense = licenseParts[1]; // 12-character device ID
-				
-				// Normalize the requesting device's MAC address (remove colons, uppercase)
-				const normalizedDeviceMac = macAddress
-					.trim()
-					.toUpperCase()
-					.replace(/[:-]/g, "");
-				
+			if (deviceIdFromLicense && normalizedDeviceMac) {
 				// Compare device IDs (both should be 12 hex characters)
 				if (deviceIdFromLicense.length === 12 && normalizedDeviceMac.length === 12) {
 					if (deviceIdFromLicense !== normalizedDeviceMac) {
-						console.warn("[LicenseManager] MAC address mismatch:", {
-							deviceIdFromLicense,
-							normalizedDeviceMac,
-							licenseMacAddress: licenseData.mac_address,
-						});
+						console.warn("[LicenseManager] ❌ DEVICE ID/MAC VALIDATION FAILED");
+						console.warn("  - Device ID from License:", deviceIdFromLicense);
+						console.warn("  - Device MAC Address:", normalizedDeviceMac);
+						console.warn("  - They do NOT match!");
+						console.log("=".repeat(80));
 						return {
 							valid: false,
 							error: "License is not valid for this device. The license key does not match this device's ID.",
 						};
 					}
-					console.log("[LicenseManager] MAC address validation passed:", {
-						deviceIdFromLicense,
-						normalizedDeviceMac,
-					});
+					console.log("[LicenseManager] ✅ Device ID/MAC validation passed");
+					console.log("  - Both match:", deviceIdFromLicense);
+				} else {
+					console.warn("[LicenseManager] ⚠️  Device ID length mismatch:");
+					console.warn("  - License device ID length:", deviceIdFromLicense.length);
+					console.warn("  - Device MAC length:", normalizedDeviceMac.length);
 				}
+			} else {
+				console.warn("[LicenseManager] ⚠️  Could not extract device ID for validation");
+				console.warn("  - Device ID from License:", deviceIdFromLicense);
+				console.warn("  - Normalized Device MAC:", normalizedDeviceMac);
 			}
+		} else if (!macAddress) {
+			console.log("[LicenseManager] ⚠️  MAC address not provided - skipping device validation");
+		} else {
+			console.log("[LicenseManager] ⚠️  Special license - skipping device validation");
 		}
 
 		// Check if license is expired
+		console.log("[LicenseManager] Checking license expiration...");
 		const expiresOn = new Date(licenseData.expires_on);
 		const now = new Date();
 
+		console.log("  - Expires On:", expiresOn.toISOString());
+		console.log("  - Current Time:", now.toISOString());
+		console.log("  - Is Expired:", expiresOn < now ? "YES ❌" : "NO ✅");
+
 		if (expiresOn < now) {
+			console.warn("[LicenseManager] ❌ LICENSE EXPIRATION CHECK FAILED");
+			console.log("=".repeat(80));
 			return { valid: false, error: "License has expired" };
 		}
+		console.log("[LicenseManager] ✅ License is not expired");
 
 		const licenseInfo: LicenseInfo = {
 			licenseKey: licenseData.license_key,
@@ -241,9 +300,24 @@ export async function validateLicenseOnline(
 			status: licenseData.status,
 		};
 
+		console.log("[LicenseManager] ✅ ALL VALIDATION CHECKS PASSED");
+		console.log("[LicenseManager] Final License Info:");
+		console.log("  - License Key:", licenseInfo.licenseKey);
+		console.log("  - MAC Address:", licenseInfo.macAddress);
+		console.log("  - Client Name:", licenseInfo.clientName);
+		console.log("  - Status:", licenseInfo.status);
+		console.log("  - Expires On:", licenseInfo.expiresOn);
+		console.log("=".repeat(80));
+		console.log("[LicenseManager] ===== LICENSE VALIDATION SUCCESSFUL =====");
+		console.log("=".repeat(80));
+
 		return { valid: true, licenseData: licenseInfo };
 	} catch (error: any) {
-		console.error("Error validating license:", error);
+		console.error("[LicenseManager] ❌ UNEXPECTED ERROR DURING VALIDATION");
+		console.error("  - Error Type:", error.name);
+		console.error("  - Error Message:", error.message);
+		console.error("  - Error Stack:", error.stack);
+		console.log("=".repeat(80));
 		return {
 			valid: false,
 			error:
@@ -413,24 +487,41 @@ export async function activateLicense(
 	email?: string,
 	macAddress?: string
 ): Promise<{ success: boolean; error?: string }> {
+	console.log("[LicenseManager] ===== LICENSE ACTIVATION STARTED =====");
+	console.log("[LicenseManager] Activation Parameters:");
+	console.log("  - License Key:", licenseKey);
+	console.log("  - Email:", email || "not provided");
+	console.log("  - MAC Address:", macAddress || "not provided");
+
 	try {
 		// Normalize license key: trim whitespace and convert to uppercase
 		// License keys are created in format: LICENSE-XXXXXXXXXXXX-XXXXXXXX
 		const normalizedLicenseKey = licenseKey.trim().toUpperCase();
+		console.log("[LicenseManager] Normalized License Key for activation:", normalizedLicenseKey);
 
 		const validation = await validateLicenseOnline(normalizedLicenseKey, macAddress);
 
 		if (!validation.valid || !validation.licenseData) {
+			console.error("[LicenseManager] ❌ LICENSE ACTIVATION FAILED");
+			console.error("  - Validation Error:", validation.error);
+			console.log("=".repeat(80));
 			return {
 				success: false,
 				error: validation.error || "License validation failed",
 			};
 		}
 
+		console.log("[LicenseManager] Validation successful, storing license locally...");
 		await storeLicense(validation.licenseData);
+		console.log("[LicenseManager] ✅ LICENSE ACTIVATION SUCCESSFUL");
+		console.log("=".repeat(80));
 		return { success: true };
 	} catch (error: any) {
-		console.error("Error activating license:", error);
+		console.error("[LicenseManager] ❌ ERROR DURING LICENSE ACTIVATION");
+		console.error("  - Error Type:", error.name);
+		console.error("  - Error Message:", error.message);
+		console.error("  - Error Stack:", error.stack);
+		console.log("=".repeat(80));
 		return {
 			success: false,
 			error: error.message || "Failed to activate license",
