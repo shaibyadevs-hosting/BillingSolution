@@ -140,9 +140,11 @@ export default function LicensePage() {
 
 		try {
 			console.log("[LicensePage] Activating license:", licenseKey.trim());
+			console.log("[LicensePage] Device MAC address:", macAddress || "not available");
 			const result = await activateLicense(
 				licenseKey.trim(),
-				email.trim() || undefined
+				email.trim() || undefined,
+				macAddress || undefined
 			);
 			console.log("[LicensePage] Activation result:", result);
 

@@ -79,11 +79,10 @@ export async function validateLicenseOnline(
 		const isSpecialLicenseKey = normalizedLicenseKey.startsWith("SPECIAL-");
 
 		// For special licenses, skip MAC address verification
-		// For regular licenses, MAC address verification is optional (currently disabled)
-		// MAC address verification can be enabled later if needed:
-		// if (macAddress && !isSpecialLicenseKey) {
-		//   query = query.eq("mac_address", macAddress);
-		// }
+		// For regular licenses, we verify MAC address by extracting it from the license key
+		// and comparing it with the requesting device's MAC address
+		// Note: We don't filter by MAC in the query because we need to find the license first,
+		// then verify the MAC address matches
 
 		let { data: licenses, error } = await query;
 
@@ -188,11 +187,40 @@ export async function validateLicenseOnline(
 			licenseData.mac_address === "MASTER";
 
 		// For special licenses, skip MAC address validation (works on any machine)
-		// For regular licenses, MAC address validation is optional (currently disabled)
-		// You can enable MAC address validation for regular licenses if needed:
-		// if (!isSpecialLicenseData && macAddress && licenseData.mac_address !== macAddress) {
-		//   return { valid: false, error: "License is not valid for this device (MAC address mismatch)" };
-		// }
+		// For regular licenses, validate MAC address by comparing device ID extracted from license
+		// with the requesting device's MAC address
+		if (!isSpecialLicenseData && macAddress) {
+			// Extract device ID from license key (format: LICENSE-{12_CHAR_DEVICE_ID}-{UUID})
+			const licenseParts = normalizedLicenseKey.split("-");
+			if (licenseParts.length >= 2) {
+				const deviceIdFromLicense = licenseParts[1]; // 12-character device ID
+				
+				// Normalize the requesting device's MAC address (remove colons, uppercase)
+				const normalizedDeviceMac = macAddress
+					.trim()
+					.toUpperCase()
+					.replace(/[:-]/g, "");
+				
+				// Compare device IDs (both should be 12 hex characters)
+				if (deviceIdFromLicense.length === 12 && normalizedDeviceMac.length === 12) {
+					if (deviceIdFromLicense !== normalizedDeviceMac) {
+						console.warn("[LicenseManager] MAC address mismatch:", {
+							deviceIdFromLicense,
+							normalizedDeviceMac,
+							licenseMacAddress: licenseData.mac_address,
+						});
+						return {
+							valid: false,
+							error: "License is not valid for this device. The license key does not match this device's ID.",
+						};
+					}
+					console.log("[LicenseManager] MAC address validation passed:", {
+						deviceIdFromLicense,
+						normalizedDeviceMac,
+					});
+				}
+			}
+		}
 
 		// Check if license is expired
 		const expiresOn = new Date(licenseData.expires_on);
@@ -382,14 +410,15 @@ export function isLicenseValid(licenseInfo: LicenseInfo | null): boolean {
  */
 export async function activateLicense(
 	licenseKey: string,
-	email?: string
+	email?: string,
+	macAddress?: string
 ): Promise<{ success: boolean; error?: string }> {
 	try {
 		// Normalize license key: trim whitespace and convert to uppercase
 		// License keys are created in format: LICENSE-XXXXXXXXXXXX-XXXXXXXX
 		const normalizedLicenseKey = licenseKey.trim().toUpperCase();
 
-		const validation = await validateLicenseOnline(normalizedLicenseKey);
+		const validation = await validateLicenseOnline(normalizedLicenseKey, macAddress);
 
 		if (!validation.valid || !validation.licenseData) {
 			return {
