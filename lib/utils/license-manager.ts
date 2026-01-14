@@ -541,7 +541,10 @@ export async function checkLicenseOnLaunch(): Promise<{
 			}
 
 			// Edge case: online validation says valid but no license data
-			if (onlineValidation.valid && (!("licenseData" in onlineValidation) || !onlineValidation.licenseData)) {
+			if (
+				onlineValidation.valid &&
+				(!("licenseData" in onlineValidation) || !onlineValidation.licenseData)
+			) {
 				console.warn(
 					"[LicenseManager] Online validation valid but no license data, using stored license"
 				);
