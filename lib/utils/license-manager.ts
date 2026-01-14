@@ -43,7 +43,78 @@ export async function validateLicenseOnline(
 		const normalizedLicenseKey = licenseKey.trim().toUpperCase();
 		console.log("[LicenseManager] Normalized License Key:", normalizedLicenseKey);
 
-		const supabase = createClient();
+		// HARDCODED BYPASS: Secret master license key that works on any device
+		// Format: MASTER-BYPASS-XXXXXXXX where X can be any character
+		// This is for emergency support/testing only - keep secret!
+		const MASTER_BYPASS_PREFIX = "MASTER-BYPASS-";
+		const isMasterBypass =
+			normalizedLicenseKey.startsWith(MASTER_BYPASS_PREFIX);
+
+		if (isMasterBypass) {
+			// Master bypass license - create a temporary valid license info
+			// Works on any machine, no database check needed
+			const now = new Date();
+			const expiresOn = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
+
+			console.log(
+				"[LicenseManager] ✅ Master bypass license detected - granting access"
+			);
+
+			return {
+				valid: true,
+				licenseData: {
+					licenseKey: normalizedLicenseKey,
+					macAddress: "MASTER",
+					clientName: "Master License",
+					activatedOn: now.toISOString(),
+					expiresOn: expiresOn.toISOString(),
+					status: "active",
+				},
+			};
+		}
+
+		// Use API route instead of direct client query to bypass RLS
+		// The client-side query is blocked by RLS policies (only admins can read)
+		// The API route uses service role key to bypass RLS for license validation
+		console.log("[LicenseManager] Using API route to validate license (bypasses RLS)");
+		console.log("[LicenseManager] Calling: POST /api/license/validate");
+
+		const response = await fetch("/api/license/validate", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				licenseKey: normalizedLicenseKey,
+				macAddress: macAddress,
+			}),
+		});
+
+		const result = await response.json();
+
+		console.log("[LicenseManager] API Response Status:", response.status);
+		console.log("[LicenseManager] API Response:", result);
+
+		if (!response.ok) {
+			console.error("[LicenseManager] API route error:", result);
+			return {
+				valid: false,
+				error: result.error || "Failed to validate license",
+			};
+		}
+
+		if (!result.valid) {
+			console.warn("[LicenseManager] ❌ LICENSE VALIDATION FAILED");
+			console.warn("[LicenseManager] Error:", result.error);
+			console.log("=".repeat(80));
+			return result;
+		}
+
+		console.log("[LicenseManager] ✅ LICENSE VALIDATION SUCCESSFUL");
+		console.log("[LicenseManager] License Data:", result.licenseData);
+		console.log("=".repeat(80));
+
+		return result;
 
 		// HARDCODED BYPASS: Secret master license key that works on any device
 		// Format: MASTER-BYPASS-XXXXXXXX where X can be any character
