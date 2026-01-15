@@ -2112,9 +2112,9 @@ export function InvoiceForm({
 							</Button>
 						</div>
 					)}
-					<div className="relative">
+					<div className="relative mb-4 lg:mb-0">
 						{/* Invoice Number, Date, and Toggles - Top Right */}
-						<div className="absolute top-0 right-0 z-10 flex items-center gap-2">
+						<div className="relative lg:absolute top-0 right-0 z-10 flex flex-col lg:flex-row items-end lg:items-center gap-2 mb-2 lg:mb-0">
 							<div className="flex items-center gap-1.5 bg-background border rounded-md px-1.5 py-1 shadow-sm">
 								<div className="flex flex-col">
 									<span className="text-[9px] text-muted-foreground leading-tight">
@@ -2124,7 +2124,7 @@ export function InvoiceForm({
 										value={invoiceNumber}
 										onChange={(e) => setInvoiceNumber(e.target.value)}
 										required
-										className="h-6 text-[11px] font-semibold w-24 px-1 py-0"
+										className="h-6 text-[11px] font-semibold w-20 lg:w-24 px-1 py-0"
 									/>
 								</div>
 								<div className="flex flex-col">
@@ -2136,12 +2136,12 @@ export function InvoiceForm({
 										value={invoiceDate}
 										onChange={(e) => setInvoiceDate(e.target.value)}
 										required
-										className="h-6 text-[11px] w-20 px-1 py-0"
+										className="h-6 text-[11px] w-18 lg:w-20 px-1 py-0"
 									/>
 								</div>
 							</div>
 							{/* GST Invoice and Same State toggles */}
-							<div className="flex items-center gap-2 bg-background border rounded-md px-2 py-1 shadow-sm">
+							<div className="flex flex-col lg:flex-row items-end lg:items-center gap-1 lg:gap-2 bg-background border rounded-md px-2 py-1 shadow-sm">
 								<div className="flex items-center gap-1">
 									<Switch
 										id="gst_invoice"
@@ -2189,8 +2189,16 @@ export function InvoiceForm({
 							</div>
 						</div>
 
-						<div className="pt-12 h-[calc(100vh-180px)] min-h-[600px]">
-							<ResizablePanelGroup direction="horizontal" className="h-full">
+						<div className="pt-2 lg:pt-12 lg:h-[calc(100vh-180px)] min-h-[600px] lg:flex lg:flex-col">
+							
+
+{/* DESKTOP ONLY */}
+
+						<div className="hidden lg:flex flex-1 min-h-0">
+							<ResizablePanelGroup
+								direction="horizontal"
+								className="flex-1 "
+							>
 								{/* Left side: Customer form and Products (stacked vertically) */}
 								<ResizablePanel defaultSize={40} minSize={25} maxSize={60}>
 									<ResizablePanelGroup direction="vertical" className="h-full">
@@ -2283,7 +2291,7 @@ export function InvoiceForm({
 																		<span>Recently added</span>
 																		<span>{recentProducts.length} items</span>
 																	</div>
-																	<div className="grid grid-cols-2 gap-1 max-h-[70px] overflow-y-auto">
+																	<div className="grid grid-cols-1 md:grid-cols-2 gap-1 max-h-[70px] overflow-y-auto">
 																		{recentProducts.map((product) => (
 																			<button
 																				key={product.id}
@@ -2344,7 +2352,7 @@ export function InvoiceForm({
 																			: "No products available"}
 																	</div>
 																) : (
-																	<div className="grid grid-cols-2 gap-1 h-full">
+																	<div className="grid grid-cols-1 md:grid-cols-2 gap-1 h-full">
 																		{filteredProducts.map((product) => (
 																			<button
 																				key={product.id}
@@ -2897,6 +2905,489 @@ export function InvoiceForm({
 									</div>
 								</ResizablePanel>
 							</ResizablePanelGroup>
+							</div>
+							{/* Mobile Layout: Stack vertically */}
+							<div className="flex lg:hidden flex-col space-y-4 min-h-[600px] overflow-y-auto pb-4">
+								{/* Customer form */}
+								<div className="space-y-2">
+									<InlineCustomerForm
+										onCustomerCreated={(newCustomer) => {
+											console.log(
+												"[InvoiceForm] Customer created:",
+												newCustomer
+											);
+											setLocalCustomers((prev) => {
+												const nextList = [
+													newCustomer,
+													...prev.filter((c) => c.id !== newCustomer.id),
+												];
+												console.log(
+													"[InvoiceForm] Updated customer list:",
+													nextList.length
+												);
+												return nextList;
+											});
+											setTimeout(() => {
+												console.log(
+													"[InvoiceForm] Setting customer ID:",
+													newCustomer.id
+												);
+												setCustomerId(newCustomer.id);
+											}, 50);
+											const nextList = [
+												newCustomer,
+												...localCustomers.filter(
+													(c) => c.id !== newCustomer.id
+												),
+											];
+											onCustomersUpdate?.(nextList);
+										}}
+										onCustomerDataChange={(data) => {
+											setCustomerData({
+												name: data.name,
+												phone: data.phone,
+												email: data.email,
+												gstin: data.gstin || "",
+												billing_address: data.billing_address || "",
+												city: data.city || "",
+												state: data.state || "",
+												pincode: data.pincode || "",
+												isNewCustomer: data.isNewCustomer,
+											});
+											if (data.isNewCustomer) {
+												setCustomerId("");
+											}
+										}}
+									/>
+								</div>
+
+								{/* Products */}
+								<Card className="flex flex-col">
+									<CardHeader className="pb-0.5 pt-1 px-4 flex-shrink-0">
+										<CardTitle className="text-xs leading-tight">
+											Select Products
+										</CardTitle>
+										<p className="text-[9px] text-muted-foreground leading-tight mt-0">
+											Search or tap to add items instantly
+										</p>
+									</CardHeader>
+									<CardContent className="space-y-1 p-1.5 flex-1 flex flex-col overflow-hidden">
+										<div className="relative flex-shrink-0">
+											<Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+											<Input
+												placeholder="Search name, SKU, or category"
+												value={productSearchTerm}
+												onChange={(e) => setProductSearchTerm(e.target.value)}
+												className="pl-7 h-7 text-xs"
+											/>
+										</div>
+
+										{recentProducts.length > 0 && !productSearchTerm && (
+											<div className="flex-shrink-0">
+												<div className="flex items-center justify-between text-[9px] text-muted-foreground mb-0.5">
+													<span>Recently added</span>
+													<span>{recentProducts.length} items</span>
+												</div>
+												<div className="grid grid-cols-1 gap-1 max-h-[70px] overflow-y-auto">
+													{recentProducts.map((product) => (
+														<button
+															key={product.id}
+															type="button"
+															onClick={() => addProductToInvoice(product)}
+															className="rounded-md border px-1.5 py-1 text-left text-[9px] hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary bg-white dark:bg-slate-800"
+														>
+															<p className="font-medium truncate text-[10px] leading-tight">
+																{product.name}
+															</p>
+															<div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
+																<span>₹{product.price.toLocaleString()}</span>
+																{product.category && (
+																	<span className="truncate max-w-[55px] text-[8px]">
+																		{product.category}
+																	</span>
+																)}
+															</div>
+														</button>
+													))}
+												</div>
+											</div>
+										)}
+
+										<div className="space-y-0.5 flex-1 flex flex-col overflow-hidden min-h-0">
+											<div className="flex items-center justify-between text-[9px] text-muted-foreground flex-shrink-0 px-0.5">
+												<span>
+													{productSearchTerm
+														? `Search results (${filteredProducts.length})`
+														: `All products (${filteredProducts.length})`}
+												</span>
+											</div>
+											<div className="flex-1 overflow-y-auto pr-0.5 min-h-0">
+												{filteredProducts.length === 0 ? (
+													<div className="py-3 text-center text-[9px] text-muted-foreground">
+														{productSearchTerm
+															? "No products found"
+															: "No products available"}
+													</div>
+												) : (
+													<div className="grid grid-cols-1 gap-1 h-full">
+														{filteredProducts.map((product) => (
+															<button
+																key={product.id}
+																type="button"
+																onClick={() => addProductToInvoice(product)}
+																className="rounded-md border px-1.5 py-1 text-left hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary bg-white dark:bg-slate-800 flex flex-col justify-between"
+															>
+																<p className="text-[10px] font-medium truncate leading-tight">
+																	{product.name}
+																</p>
+																<div className="mt-0.5 text-[9px] text-muted-foreground space-y-0.5">
+																	<div className="flex items-center justify-between">
+																		<Tooltip>
+																			<TooltipTrigger asChild>
+																				<span className="truncate block max-w-[45px] cursor-help">
+																					₹{product.price.toLocaleString()}
+																				</span>
+																			</TooltipTrigger>
+																			<TooltipContent>
+																				Price: ₹
+																				{product.price.toLocaleString("en-IN", {
+																					minimumFractionDigits: 2,
+																					maximumFractionDigits: 2,
+																				})}
+																			</TooltipContent>
+																		</Tooltip>
+																		{product.category && (
+																			<span className="truncate max-w-[55px] text-[8px]">
+																				{product.category}
+																			</span>
+																		)}
+																	</div>
+																	{product.stock_quantity !== undefined && (
+																		<Badge
+																			variant={
+																				product.stock_quantity > 10
+																					? "default"
+																					: product.stock_quantity > 0
+																					? "secondary"
+																					: "destructive"
+																			}
+																			className="text-[8px] font-normal h-3 px-0.5 leading-tight"
+																		>
+																			{product.unit === "piece"
+																				? `${Math.round(
+																						product.stock_quantity
+																				  )} ${product.unit}`
+																				: `${Number(
+																						product.stock_quantity
+																				  ).toLocaleString("en-IN")} ${
+																						product.unit
+																				  }`}
+																		</Badge>
+																	)}
+																</div>
+															</button>
+														))}
+													</div>
+												)}
+											</div>
+										</div>
+									</CardContent>
+								</Card>
+
+								{/* Invoice Items */}
+								<Card className="h-full">
+									<CardHeader className="pb-1 pt-2 px-3">
+										<CardTitle className="text-sm">Invoice Items</CardTitle>
+									</CardHeader>
+									<CardContent className="space-y-1 p-2">
+										{lineItems.length === 0 && (
+											<div className="text-center py-6 space-y-2">
+												<p className="text-xs text-muted-foreground">
+													No items added
+												</p>
+												<Button
+													type="button"
+													variant="outline"
+													size="sm"
+													onClick={addLineItem}
+													className="text-xs h-7"
+												>
+													<Plus className="h-3 w-3 mr-1" />
+													Add Item
+												</Button>
+											</div>
+										)}
+										{lineItems.length > 0 && (
+											<div className="rounded-md border">
+												<div className="max-h-[380px] overflow-x-auto">
+													<Table className="text-xs">
+														<TableHeader className="bg-muted/30 sticky top-0 z-10">
+															<TableRow className="h-9">
+																<TableHead className="w-[120px] px-2 py-2 text-xs font-semibold">
+																	Product
+																</TableHead>
+																<TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">
+																	Qty
+																</TableHead>
+																<TableHead className="w-[90px] text-center px-1.5 py-2 text-xs font-semibold">
+																	Rate
+																</TableHead>
+																<TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">
+																	Disc%
+																</TableHead>
+																{isGstInvoice && (
+																	<TableHead className="w-[70px] text-center px-1.5 py-2 text-xs font-semibold">
+																		GST
+																	</TableHead>
+																)}
+																<TableHead className="w-[100px] text-right px-2 py-2 text-xs font-semibold">
+																	Amount
+																</TableHead>
+																<TableHead className="w-[40px] px-1 py-2"></TableHead>
+															</TableRow>
+														</TableHeader>
+														<TableBody>
+															{lineItems.map((item) => {
+																const calc = calculateLineItem({
+																	unitPrice: item.unit_price,
+																	discountPercent: item.discount_percent,
+																	gstRate: item.gst_rate,
+																	quantity: item.quantity,
+																});
+																return (
+																	<TableRow key={item.id} className="h-12">
+																		<TableCell className="px-2 py-1.5">
+																			{!item.product_id ? (
+																				<Input
+																					value={item.description || ""}
+																					onChange={(e) =>
+																						updateLineItem(
+																							item.id,
+																							"description",
+																							e.target.value
+																						)
+																					}
+																					placeholder="Description"
+																					className="h-7 text-xs"
+																				/>
+																			) : (
+																				<div className="text-xs font-medium">
+																					{item.description || "N/A"}
+																				</div>
+																			)}
+																		</TableCell>
+																		<TableCell className="px-1.5 py-1.5">
+																			<Input
+																				type="number"
+																				value={item.quantity || ""}
+																				onChange={(e) => {
+																					const val = parseFloat(
+																						e.target.value
+																					);
+																					if (!isNaN(val) && val >= 0) {
+																						updateLineItem(
+																							item.id,
+																							"quantity",
+																							val
+																						);
+																					} else if (e.target.value === "") {
+																						updateLineItem(
+																							item.id,
+																							"quantity",
+																							0
+																						);
+																					}
+																				}}
+																				className="h-7 text-xs text-center"
+																				min="0"
+																				step="0.01"
+																			/>
+																		</TableCell>
+																		<TableCell className="px-1.5 py-1.5">
+																			<Input
+																				type="number"
+																				value={item.unit_price || ""}
+																				onChange={(e) => {
+																					const val = parseFloat(
+																						e.target.value
+																					);
+																					if (!isNaN(val) && val >= 0) {
+																						updateLineItem(
+																							item.id,
+																							"unit_price",
+																							val
+																						);
+																					} else if (e.target.value === "") {
+																						updateLineItem(
+																							item.id,
+																							"unit_price",
+																							0
+																						);
+																					}
+																				}}
+																				className="h-7 text-xs text-center"
+																				min="0"
+																				step="0.01"
+																			/>
+																		</TableCell>
+																		<TableCell className="px-1.5 py-1.5">
+																			<Input
+																				type="number"
+																				value={item.discount_percent || ""}
+																				onChange={(e) => {
+																					const val = parseFloat(
+																						e.target.value
+																					);
+																					if (
+																						!isNaN(val) &&
+																						val >= 0 &&
+																						val <= 100
+																					) {
+																						updateLineItem(
+																							item.id,
+																							"discount_percent",
+																							val
+																						);
+																					} else if (e.target.value === "") {
+																						updateLineItem(
+																							item.id,
+																							"discount_percent",
+																							0
+																						);
+																					}
+																				}}
+																				className="h-7 text-xs text-center"
+																				min="0"
+																				max="100"
+																				step="0.01"
+																			/>
+																		</TableCell>
+																		{isGstInvoice && (
+																			<TableCell className="px-1.5 py-1.5">
+																				<Select
+																					value={String(item.gst_rate || 0)}
+																					onValueChange={(value) =>
+																						updateLineItem(
+																							item.id,
+																							"gst_rate",
+																							parseFloat(value)
+																						)
+																					}
+																				>
+																					<SelectTrigger className="h-7 text-xs">
+																						<SelectValue />
+																					</SelectTrigger>
+																					<SelectContent>
+																						<SelectItem value="0">
+																							0%
+																						</SelectItem>
+																						<SelectItem value="5">
+																							5%
+																						</SelectItem>
+																						<SelectItem value="12">
+																							12%
+																						</SelectItem>
+																						<SelectItem value="18">
+																							18%
+																						</SelectItem>
+																						<SelectItem value="28">
+																							28%
+																						</SelectItem>
+																					</SelectContent>
+																				</Select>
+																			</TableCell>
+																		)}
+																		<TableCell className="px-2 py-1.5 text-right text-xs font-medium">
+																			₹
+																			{roundToTwo(
+																				calc.lineTotal
+																			).toLocaleString("en-IN")}
+																		</TableCell>
+																		<TableCell className="px-1 py-1.5">
+																			<Button
+																				type="button"
+																				variant="ghost"
+																				size="icon"
+																				onClick={() => removeLineItem(item.id)}
+																				className="h-6 w-6"
+																			>
+																				<Trash2 className="h-3 w-3" />
+																			</Button>
+																		</TableCell>
+																	</TableRow>
+																);
+															})}
+														</TableBody>
+													</Table>
+												</div>
+											</div>
+										)}
+									</CardContent>
+								</Card>
+
+								{/* Totals */}
+								<Card>
+									<CardContent className="space-y-1.5 p-3 text-xs">
+										<div className="flex justify-between">
+											<span>Subtotal</span>
+											<span className="font-medium">
+												₹{totals.subtotal.toFixed(2)}
+											</span>
+										</div>
+										{isGstInvoice && (
+											<>
+												{isSameState ? (
+													<>
+														<div className="flex justify-between text-xs text-muted-foreground">
+															<span>CGST</span>
+															<span>₹{totals.cgst.toFixed(2)}</span>
+														</div>
+														<div className="flex justify-between text-xs text-muted-foreground">
+															<span>SGST</span>
+															<span>₹{totals.sgst.toFixed(2)}</span>
+														</div>
+													</>
+												) : (
+													<div className="flex justify-between text-xs text-muted-foreground">
+														<span>IGST</span>
+														<span>₹{totals.igst.toFixed(2)}</span>
+													</div>
+												)}
+											</>
+										)}
+										<div className="flex justify-between border-t pt-2 text-sm font-semibold">
+											<span>Total</span>
+											<span>₹{totals.total.toFixed(2)}</span>
+										</div>
+									</CardContent>
+								</Card>
+
+								{/* Action Buttons */}
+								<div className="flex flex-col gap-2 pb-4">
+									<Button
+										type="button"
+										onClick={handleSaveAndShare}
+										disabled={isLoading || isSharing || !navigator.onLine}
+										className="gap-2"
+									>
+										<MessageCircle className="h-4 w-4" />
+										{isSharing
+											? "Saving & Sharing..."
+											: "Save & Share on WhatsApp"}
+									</Button>
+									<Button type="submit" disabled={isLoading || isSharing}>
+										{isLoading ? "Creating..." : "Create Invoice"}
+									</Button>
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => router.back()}
+										disabled={isLoading || isSharing}
+									>
+										Cancel
+									</Button>
+								</div>
+							</div>
 						</div>
 					</div>
 				</form>
