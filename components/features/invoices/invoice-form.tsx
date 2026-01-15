@@ -72,6 +72,42 @@ import {
 	validateDiscountPercent,
 } from "@/lib/utils/db-validation";
 
+
+
+
+
+
+function useIsRealMobile() {
+	const [isMobile, setIsMobile] = useState(false);
+
+	useEffect(() => {
+		const check = () => {
+			const isSmallScreen = window.innerWidth < 768;
+			const isTouch =
+				window.matchMedia("(pointer: coarse)").matches ||
+				"ontouchstart" in window;
+
+			setIsMobile(isSmallScreen || isTouch);
+		};
+
+		check();
+		window.addEventListener("resize", check);
+		return () => window.removeEventListener("resize", check);
+	}, []);
+
+	return isMobile;
+}
+
+
+
+
+
+
+
+
+
+
+
 // Helper function to update product stock quantities after invoice creation
 async function updateProductStock(
 	items: Array<{ product_id: string | null; quantity: number }>,
@@ -282,6 +318,23 @@ export function InvoiceForm({
 	const [showRLSErrorModal, setShowRLSErrorModal] = useState(false);
 	const [rlsErrorDetails, setRlsErrorDetails] = useState<any>(null);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
 	// Merge prop customers with local additions without removing new ones
 	useEffect(() => {
 		setLocalCustomers((prev) => {
@@ -482,6 +535,7 @@ export function InvoiceForm({
 	const [productSearchTerm, setProductSearchTerm] = useState("");
 	const [focusedField, setFocusedField] = useState<string | null>(null);
 	const [isB2BEnabled, setIsB2BEnabled] = useState(false);
+	const isRealMobile = useIsRealMobile();
 
 	const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
@@ -2291,7 +2345,12 @@ export function InvoiceForm({
 																		<span>Recently added</span>
 																		<span>{recentProducts.length} items</span>
 																	</div>
-																	<div className="grid grid-cols-1 md:grid-cols-2 gap-1 max-h-[70px] overflow-y-auto">
+																	<div
+	className={`grid gap-1 max-h-[70px] overflow-y-auto ${
+		isRealMobile ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+	}`}
+>
+
 																		{recentProducts.map((product) => (
 																			<button
 																				key={product.id}
@@ -2352,7 +2411,12 @@ export function InvoiceForm({
 																			: "No products available"}
 																	</div>
 																) : (
-																	<div className="grid grid-cols-1 md:grid-cols-2 gap-1 h-full">
+																	<div
+	className={`grid gap-1 h-full ${
+		isRealMobile ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+	}`}
+>
+
 																		{filteredProducts.map((product) => (
 																			<button
 																				key={product.id}
