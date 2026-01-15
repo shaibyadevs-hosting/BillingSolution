@@ -246,8 +246,8 @@ export default function LoginPage() {
         
         const userRole = profile?.role || "admin"
         
-        // Set database mode from database (source of truth)
-        // Try user_profiles.database_mode first, then business_settings.database_mode
+        // CRITICAL: Set database mode from database (source of truth)
+        // user_profiles.database_mode is PRIMARY source, business_settings is fallback
         let databaseMode: string | null = profile?.database_mode || null
         
         if (!databaseMode) {
@@ -260,15 +260,14 @@ export default function LoginPage() {
           databaseMode = settings?.database_mode || null
         }
         
-        // Set localStorage to match database (database is source of truth)
-        if (databaseMode && typeof window !== 'undefined') {
-          localStorage.setItem('databaseType', databaseMode)
-        } else if (typeof window !== 'undefined') {
-          // Default to indexeddb if not set in database
-          localStorage.setItem('databaseType', 'indexeddb')
+        // CRITICAL: Always set localStorage to match database (database is source of truth)
+        // This ensures consistency across all sessions and devices
+        const finalMode = databaseMode || 'indexeddb'
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('databaseType', finalMode)
         }
         
-        // Clear database mode cache to force refresh
+        // CRITICAL: Clear database mode cache to force refresh on next check
         const { clearDatabaseModeCache } = await import("@/lib/utils/db-mode")
         clearDatabaseModeCache()
         

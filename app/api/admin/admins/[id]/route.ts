@@ -72,7 +72,7 @@ export async function PATCH(
     if (allow_b2b_mode !== undefined && allow_b2b_mode !== null) profileUpdate.allow_b2b_mode = allow_b2b_mode
     if (is_active !== undefined && is_active !== null) profileUpdate.is_active = is_active
 
-    // Update user profile (only if there are fields to update)
+    // CRITICAL: Update user_profiles.database_mode first (primary source of truth)
     if (Object.keys(profileUpdate).length > 0) {
       const { error: profileError } = await supabase
         .from("user_profiles")
@@ -84,17 +84,39 @@ export async function PATCH(
       }
     }
 
-    // Update business_settings (only if relevant fields are provided)
+    // CRITICAL: Always sync database_mode to business_settings to ensure consistency
+    // Both tables must have the same value - this is critical for mode persistence
     if (database_mode !== undefined || allow_b2b_mode !== undefined || billing_mode !== undefined) {
       const settingsUpdate: Record<string, any> = {
         user_id: id,
       }
-      if (database_mode !== undefined && database_mode !== null) settingsUpdate.database_mode = database_mode
-      if (allow_b2b_mode !== undefined && allow_b2b_mode !== null) settingsUpdate.allow_b2b_mode = allow_b2b_mode
+      
+      // CRITICAL: ALWAYS sync database_mode to ensure consistency
+      if (database_mode !== undefined && database_mode !== null) {
+        // If database_mode is being updated in user_profiles, ensure business_settings matches
+        settingsUpdate.database_mode = database_mode
+      } else {
+        // If database_mode not provided in this update, fetch current value from user_profiles to sync
+        // This ensures business_settings always matches user_profiles
+        const { data: currentProfile } = await supabase
+          .from("user_profiles")
+          .select("database_mode")
+          .eq("id", id)
+          .single()
+        
+        if (currentProfile?.database_mode) {
+          settingsUpdate.database_mode = currentProfile.database_mode
+        }
+      }
+      
+      if (allow_b2b_mode !== undefined && allow_b2b_mode !== null) {
+        settingsUpdate.allow_b2b_mode = allow_b2b_mode
+      }
       if (billing_mode !== undefined && billing_mode !== null) {
         settingsUpdate.is_b2b_enabled = billing_mode === "b2b" || billing_mode === "both"
       }
 
+      // Use upsert to ensure settings exist, and always sync database_mode
       const { error: settingsError } = await supabase
         .from("business_settings")
         .upsert(settingsUpdate, { onConflict: "user_id" })
@@ -102,9 +124,28 @@ export async function PATCH(
       if (settingsError) {
         throw settingsError
       }
+    } else if (database_mode !== undefined && database_mode !== null) {
+      // Edge case: Only database_mode was updated but no other settings fields
+      // Still sync to business_settings to ensure consistency
+      const { error: settingsError } = await supabase
+        .from("business_settings")
+        .upsert(
+          { 
+            user_id: id,
+            database_mode: database_mode 
+          },
+          { onConflict: "user_id" }
+        )
+
+      if (settingsError) {
+        throw settingsError
+      }
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ 
+      success: true,
+      message: "Admin updated successfully. Database mode changes will take effect on next login."
+    })
   } catch (error: any) {
     console.error("[API /admin/admins/[id]] Error:", error)
     return NextResponse.json(

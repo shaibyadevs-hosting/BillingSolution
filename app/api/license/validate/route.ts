@@ -68,7 +68,7 @@ export async function POST(request: Request) {
 			}
 		);
 
-		console.log("[API /license/validate] Validating license:", normalizedLicenseKey);
+		// Validate license (logs removed for security)
 
 		// Query license from database
 		let { data: licenses, error } = await supabase
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
 		}
 
 		if (error) {
-			console.error("[API /license/validate] Database error:", error);
+			console.error("[API /license/validate] Database error");
 			return NextResponse.json(
 				{
 					valid: false,
@@ -101,7 +101,6 @@ export async function POST(request: Request) {
 		}
 
 		if (!licenses || licenses.length === 0) {
-			console.log("[API /license/validate] License not found:", normalizedLicenseKey);
 			return NextResponse.json({
 				valid: false,
 				error: "License not found. Please check the license key and try again.",
@@ -139,10 +138,6 @@ export async function POST(request: Request) {
 				// Compare device IDs
 				if (deviceIdFromLicense.length === 12 && normalizedDeviceMac.length === 12) {
 					if (deviceIdFromLicense !== normalizedDeviceMac) {
-						console.log("[API /license/validate] Device ID mismatch:", {
-							deviceIdFromLicense,
-							normalizedDeviceMac,
-						});
 						return NextResponse.json({
 							valid: false,
 							error: "License is not valid for this device. The license key does not match this device's ID.",
@@ -178,7 +173,7 @@ export async function POST(request: Request) {
 			},
 		});
 	} catch (error: any) {
-		console.error("[API /license/validate] Error:", error);
+		console.error("[API /license/validate] Validation error");
 		return NextResponse.json(
 			{
 				valid: false,

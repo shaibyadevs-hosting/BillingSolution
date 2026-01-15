@@ -35,53 +35,30 @@ export default function LicensePage() {
 
 	// Check if license already exists on mount
 	useEffect(() => {
-		console.log(
-			"[LicensePage] useEffect started - checking for existing license"
-		);
-
 		// Set immediate timeout to show form quickly (500ms)
 		const immediateTimeout = setTimeout(() => {
-			console.log(
-				"[LicensePage] Immediate timeout (500ms) - setting checking to false"
-			);
 			setChecking(false);
 		}, 500);
 
 		const checkExistingLicense = async () => {
-			console.log("[LicensePage] checkExistingLicense started");
 			try {
-				console.log("[LicensePage] Getting stored license from IndexedDB...");
-
 				// Add timeout to getStoredLicense call (1 second max)
 				const licensePromise = getStoredLicense();
 				const timeoutPromise = new Promise<null>((resolve) => {
 					setTimeout(() => {
-						console.warn(
-							"[LicensePage] getStoredLicense timeout after 1 second"
-						);
 						resolve(null);
 					}, 1000);
 				});
 
 				const stored = await Promise.race([licensePromise, timeoutPromise]);
-				console.log(
-					"[LicensePage] Stored license result:",
-					stored ? "found" : "not found",
-					stored
-				);
 
 				if (stored && isLicenseValid(stored)) {
-					console.log(
-						"[LicensePage] License is valid, redirecting to homepage"
-					);
 					router.push("/");
 					return;
 				}
-				console.log("[LicensePage] No valid license found, will show form");
 			} catch (error) {
-				console.error("[LicensePage] Error checking existing license:", error);
+				// Silently handle errors
 			} finally {
-				console.log("[LicensePage] Finally block - setting checking to false");
 				clearTimeout(immediateTimeout);
 				setChecking(false);
 			}
@@ -89,9 +66,6 @@ export default function LicensePage() {
 
 		// Add longer timeout as backup (2 seconds)
 		const backupTimeout = setTimeout(() => {
-			console.warn(
-				"[LicensePage] Backup timeout (2s) - forcing checking to false"
-			);
 			setChecking(false);
 		}, 2000);
 
@@ -102,23 +76,18 @@ export default function LicensePage() {
 
 	// Get MAC address on mount
 	useEffect(() => {
-		console.log("[LicensePage] Fetching MAC address...");
 		const fetchMacAddress = async () => {
 			try {
 				const mac = await getMacAddress();
-				console.log(
-					"[LicensePage] MAC address fetched:",
-					mac ? "success" : "failed"
-				);
 				setMacAddress(mac);
 			} catch (error) {
-				console.error("[LicensePage] Error getting MAC address:", error);
+				// Silently handle MAC address fetch errors
 			}
 		};
 
 		// Add timeout for MAC address fetch
 		const timeout = setTimeout(() => {
-			console.warn("[LicensePage] MAC address fetch timeout");
+			// Timeout handled silently
 		}, 2000);
 
 		fetchMacAddress().finally(() => {
@@ -139,18 +108,14 @@ export default function LicensePage() {
 		setLoading(true);
 
 		try {
-			console.log("[LicensePage] Activating license:", licenseKey.trim());
-			console.log("[LicensePage] Device MAC address:", macAddress || "not available");
 			const result = await activateLicense(
 				licenseKey.trim(),
 				email.trim() || undefined,
 				macAddress || undefined
 			);
-			console.log("[LicensePage] Activation result:", result);
 
 			if (result.success) {
 				setSuccess(true);
-				console.log("[LicensePage] License activated successfully");
 				// Redirect to homepage after a short delay
 				setTimeout(() => {
 					router.push("/");
@@ -206,14 +171,10 @@ export default function LicensePage() {
 						}
 						keysToRemove.forEach((key) => {
 							window.localStorage.removeItem(key);
-							console.log("[LicensePage] Removed localStorage key:", key);
 						});
 					}
 				} catch (localStorageError) {
-					console.warn(
-						"[LicensePage] Error clearing localStorage:",
-						localStorageError
-					);
+					// Silently handle localStorage errors
 				}
 
 				setSuccess(true);
@@ -221,16 +182,13 @@ export default function LicensePage() {
 
 				// Show success message and redirect
 				setTimeout(() => {
-					console.log("[LicensePage] Redirecting to show activation form...");
 					router.push("/license");
 					router.refresh();
 				}, 1500);
 			} else {
-				console.error("[LicensePage] Failed to clear license:", result.error);
 				setError(result.error || "Failed to reset license");
 			}
 		} catch (err: any) {
-			console.error("[LicensePage] Error clearing license:", err);
 			setError(
 				err.message || "An unexpected error occurred while resetting license"
 			);
@@ -257,15 +215,6 @@ export default function LicensePage() {
 			</div>
 		);
 	}
-
-	console.log(
-		"[LicensePage] Rendering license form - checking:",
-		checking,
-		"loading:",
-		loading,
-		"error:",
-		error
-	);
 
 	return (
 		<div className="min-h-screen flex items-center justify-center bg-background p-4">

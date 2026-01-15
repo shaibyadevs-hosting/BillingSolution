@@ -84,21 +84,13 @@ export async function validateLicenseOnline(
 			return result;
 		}
 
-		console.log("[LicenseManager] ✅ LICENSE VALIDATION SUCCESSFUL");
-		console.log("[LicenseManager] License Data:", result.licenseData);
-		console.log("=".repeat(80));
-
-		// Ensure the return type matches the expected shape
+		console.log("[LicenseManager] License validation successful");
 		return {
 			valid: true,
 			licenseData: result.licenseData as LicenseInfo | undefined,
 		};
 	} catch (error: any) {
-		console.error("[LicenseManager] ❌ UNEXPECTED ERROR DURING VALIDATION");
-		console.error("  - Error Type:", error.name);
-		console.error("  - Error Message:", error.message);
-		console.error("  - Error Stack:", error.stack);
-		console.log("=".repeat(80));
+		console.error("[LicenseManager] Validation error");
 		return {
 			valid: false,
 			error:
@@ -268,20 +260,10 @@ export async function activateLicense(
 	email?: string,
 	macAddress?: string
 ): Promise<{ success: boolean; error?: string }> {
-	console.log("[LicenseManager] ===== LICENSE ACTIVATION STARTED =====");
-	console.log("[LicenseManager] Activation Parameters:");
-	console.log("  - License Key:", licenseKey);
-	console.log("  - Email:", email || "not provided");
-	console.log("  - MAC Address:", macAddress || "not provided");
-
 	try {
 		// Normalize license key: trim whitespace and convert to uppercase
 		// License keys are created in format: LICENSE-XXXXXXXXXXXX-XXXXXXXX
 		const normalizedLicenseKey = licenseKey.trim().toUpperCase();
-		console.log(
-			"[LicenseManager] Normalized License Key for activation:",
-			normalizedLicenseKey
-		);
 
 		const validation = await validateLicenseOnline(
 			normalizedLicenseKey,
@@ -289,28 +271,17 @@ export async function activateLicense(
 		);
 
 		if (!validation.valid || !validation.licenseData) {
-			console.error("[LicenseManager] ❌ LICENSE ACTIVATION FAILED");
-			console.error("  - Validation Error:", validation.error);
-			console.log("=".repeat(80));
 			return {
 				success: false,
 				error: validation.error || "License validation failed",
 			};
 		}
 
-		console.log(
-			"[LicenseManager] Validation successful, storing license locally..."
-		);
 		await storeLicense(validation.licenseData);
-		console.log("[LicenseManager] ✅ LICENSE ACTIVATION SUCCESSFUL");
-		console.log("=".repeat(80));
+		console.log("[LicenseManager] License activated successfully");
 		return { success: true };
 	} catch (error: any) {
-		console.error("[LicenseManager] ❌ ERROR DURING LICENSE ACTIVATION");
-		console.error("  - Error Type:", error.name);
-		console.error("  - Error Message:", error.message);
-		console.error("  - Error Stack:", error.stack);
-		console.log("=".repeat(80));
+		console.error("[LicenseManager] Activation error");
 		return {
 			success: false,
 			error: error.message || "Failed to activate license",
