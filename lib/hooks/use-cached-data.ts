@@ -22,7 +22,6 @@ function getQueryKey(baseKey: string[]): string[] {
 
 // Query keys for consistent caching (with store and dbMode included)
 export const queryKeys = {
-    storeSettings: () => ["storeSettings"] as const,
     customers: () => getQueryKey(["customers"]) as readonly string[],
     products: () => getQueryKey(["products"]) as readonly string[],
     invoices: () => getQueryKey(["invoices"]) as readonly string[],
@@ -33,6 +32,7 @@ export const queryKeys = {
     product: (id: string) => getQueryKey(["product", id]) as readonly string[],
     invoice: (id: string) => getQueryKey(["invoice", id]) as readonly string[],
     store: (id: string) => getQueryKey(["store", id]) as readonly string[],
+    storeSettings: () => getQueryKey(["storeSettings"]) as readonly string[],
 }
 
 // Hook to fetch customers with caching (store-scoped)
@@ -52,7 +52,7 @@ export function useCustomers() {
                         const allCustomers = await db.customers.toArray()
                         // Include customers with matching store_id OR null/undefined store_id (legacy data)
                         return allCustomers.filter(
-                            (c) => !c.store_id || c.store_id === storeId
+                            (c: any) => !c.store_id || c.store_id === storeId
                         )
                     }
                     // Fallback: Return all (for backward compatibility with legacy data)
@@ -184,7 +184,7 @@ export function useProducts() {
                         const allProducts = await db.products.toArray()
                         // Include products with matching store_id OR null/undefined store_id (legacy data)
                         return allProducts.filter(
-                            (p) => !p.store_id || p.store_id === storeId
+                            (p: any) => !p.store_id || p.store_id === storeId
                         )
                     }
                     // Fallback: Return all (for backward compatibility with legacy data)
@@ -737,7 +737,9 @@ export function useInvoice(id: string) {
                     let employee = null
                     if (invoice.created_by_employee_id || invoice.employee_id) {
                         const employeeId = invoice.created_by_employee_id || invoice.employee_id
-                        employee = await db.employees.where("employee_id").equals(employeeId).first()
+                        if (employeeId) {
+                            employee = await db.employees.where("employee_id").equals(employeeId).first()
+                        }
                     }
 
                     // Get invoice items
