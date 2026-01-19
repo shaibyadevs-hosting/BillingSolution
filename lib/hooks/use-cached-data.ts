@@ -22,6 +22,7 @@ function getQueryKey(baseKey: string[]): string[] {
 
 // Query keys for consistent caching (with store and dbMode included)
 export const queryKeys = {
+    storeSettings: () => ["storeSettings"] as const,
     customers: () => getQueryKey(["customers"]) as readonly string[],
     products: () => getQueryKey(["products"]) as readonly string[],
     invoices: () => getQueryKey(["invoices"]) as readonly string[],
@@ -765,6 +766,96 @@ export function useInvoice(id: string) {
             }
         },
         enabled: !!id,
+        staleTime: (() => {
+            const dbMode = getActiveDbMode()
+            return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
+        })(),
+    })
+}
+
+// Hook to fetch business settings
+export function useStoreSettings() {
+    return useQuery({
+        queryKey: queryKeys.storeSettings(),
+        queryFn: async () => {
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
+
+            if (isIndexedDb) {
+                // IndexedDB mode - return default settings (business_settings not stored in IndexedDB)
+                return {
+                    invoice_prefix: 'INV',
+                    next_invoice_number: 1,
+                    default_gst_rate: 18,
+                    place_of_supply: null,
+                }
+            } else {
+                // Supabase mode - load from business_settings table
+                const supabase = createClient()
+                const authType = localStorage.getItem("authType")
+                let userId: string | null = null
+
+                // For employees, get admin_user_id from store
+                if (authType === "employee") {
+                    const empSession = localStorage.getItem("employeeSession")
+                    if (empSession) {
+                        try {
+                            const session = JSON.parse(empSession)
+                            const storeId = session.storeId
+                            
+                            if (storeId) {
+                                const { data: store } = await supabase
+                                    .from('stores')
+                                    .select('admin_user_id')
+                                    .eq('id', storeId)
+                                    .single()
+                                
+                                if (store?.admin_user_id) {
+                                    userId = store.admin_user_id
+                                }
+                            }
+                        } catch (e) {
+                            console.error('[useStoreSettings] Employee session error:', e)
+                        }
+                    }
+                } else {
+                    // For admin users
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (user) {
+                        userId = user.id
+                    }
+                }
+
+                if (!userId) {
+                    // Return default settings if no user
+                    return {
+                        invoice_prefix: 'INV',
+                        next_invoice_number: 1,
+                        default_gst_rate: 18,
+                        place_of_supply: null,
+                    }
+                }
+
+                const { data, error } = await supabase
+                    .from('business_settings')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .single()
+
+                if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+                    console.error('[useStoreSettings] Error fetching settings:', error)
+                }
+
+                // Return settings or defaults
+                return data || {
+                    invoice_prefix: 'INV',
+                    next_invoice_number: 1,
+                    default_gst_rate: 18,
+                    place_of_supply: null,
+                }
+            }
+        },
         staleTime: (() => {
             const dbMode = getActiveDbMode()
             return dbMode === 'indexeddb' ? 30 * 60 * 1000 : 5 * 60 * 1000
