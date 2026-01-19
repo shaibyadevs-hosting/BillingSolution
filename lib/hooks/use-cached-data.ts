@@ -455,10 +455,55 @@ export function useEmployees() {
             // Use async mode detection to properly inherit from admin for employees
             const dbMode = await getActiveDbModeAsync()
             const isIndexedDb = dbMode === 'indexeddb'
+            const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
                 try {
-                    return await db.employees.toArray()
+                    const allEmployees: any[] = await db.employees.toArray()
+
+                    // Store-scoped filtering (include legacy/null store_id for backward compatibility)
+                    const filtered = storeId
+                        ? allEmployees.filter((e) => !e.store_id || e.store_id === storeId)
+                        : allEmployees
+
+                    // Attach store info to match Supabase shape: `employee.stores`
+                    const uniqueStoreIds = Array.from(
+                        new Set(
+                            filtered
+                                .map((e) => e.store_id)
+                                .filter((id): id is string => typeof id === "string" && id.length > 0)
+                        )
+                    )
+
+                    if (uniqueStoreIds.length > 0) {
+                        const stores = await db.stores.bulkGet(uniqueStoreIds)
+                        const storeById = new Map<string, any>()
+                        uniqueStoreIds.forEach((id, idx) => storeById.set(id, stores[idx] || null))
+
+                        const withStores = filtered.map((e) => {
+                            // Keep existing nested stores if it already exists (e.g., saved from Supabase response)
+                            if (e?.stores?.name) return e
+                            const s = e.store_id ? storeById.get(e.store_id) : null
+                            return s ? { ...e, stores: s } : e
+                        })
+
+                        // Match Supabase ordering (newest first) when timestamps exist
+                        withStores.sort((a: any, b: any) => {
+                            const aTs = a?.created_at || a?.updated_at || ""
+                            const bTs = b?.created_at || b?.updated_at || ""
+                            return String(bTs).localeCompare(String(aTs))
+                        })
+
+                        return withStores
+                    }
+
+                    filtered.sort((a: any, b: any) => {
+                        const aTs = a?.created_at || a?.updated_at || ""
+                        const bTs = b?.created_at || b?.updated_at || ""
+                        return String(bTs).localeCompare(String(aTs))
+                    })
+
+                    return filtered
                 } catch (error) {
                     console.error("[useEmployees] Error loading from IndexedDB:", error)
                     return [] // Return empty array on error (offline mode)
@@ -468,11 +513,16 @@ export function useEmployees() {
                 const { data: { user } } = await supabase.auth.getUser()
                 if (!user) return []
 
-                const { data, error } = await supabase
+                let query = supabase
                     .from("employees")
                     .select("*, stores(name, store_code)")
                     .eq("user_id", user.id)
-                    .order("created_at", { ascending: false })
+                
+                if (storeId) {
+                    query = query.eq("store_id", storeId)
+                }
+
+                const { data, error } = await query.order("created_at", { ascending: false })
 
                 if (error) throw error
                 return data || []
