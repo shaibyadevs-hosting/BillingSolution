@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/tooltip";
 import { createClient } from "@/lib/supabase/client";
 import { db } from "@/lib/dexie-client";
-import { getDatabaseType } from "@/lib/utils/db-mode";
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode";
 import { formatLargeNumber, formatFullNumber } from "@/lib/utils/number-formatter";
 import {
 	AlertCircle,
@@ -59,7 +59,6 @@ export default function InventoryPage() {
 	const [products, setProducts] = useState<InventoryProduct[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [databaseType, setDatabaseType] = useState(getDatabaseType());
 	const [searchTerm, setSearchTerm] = useState("");
 	const [categoryFilter, setCategoryFilter] = useState<string>("all");
 	const [stockFilter, setStockFilter] = useState<string>("all");
@@ -74,19 +73,17 @@ export default function InventoryPage() {
 	}, [isEmployee, roleLoading, router]);
 
 	useEffect(() => {
-		const updateDbType = () => setDatabaseType(getDatabaseType());
-		updateDbType();
-		window.addEventListener("storage", updateDbType);
-		return () => window.removeEventListener("storage", updateDbType);
-	}, []);
-
-	useEffect(() => {
 		let isActive = true;
 		const loadProducts = async () => {
 			try {
 				setLoading(true);
 				setError(null);
-				if (databaseType === "indexeddb") {
+				
+				// Check database mode first
+				const dbMode = await getActiveDbModeAsync();
+				const isIndexedDb = dbMode === 'indexeddb';
+				
+				if (isIndexedDb) {
 					const list = await db.products.toArray();
 					console.log(
 						"[InventoryPage] Loaded products from IndexedDB:",
@@ -127,7 +124,7 @@ export default function InventoryPage() {
 		return () => {
 			isActive = false;
 		};
-	}, [databaseType]);
+	}, []);
 
 	const {
 		totalProducts,
@@ -294,7 +291,7 @@ export default function InventoryPage() {
 					</p>
 				</div>
 				<Badge variant="secondary" className="w-fit">
-					{databaseType === "indexeddb" ? "Local Mode" : "Supabase Mode"}
+					{loading ? "Loading..." : "Inventory"}
 				</Badge>
 			</div>
 

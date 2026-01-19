@@ -26,6 +26,8 @@ interface Customer {
   billing_address?: string | null
   shipping_address?: string | null
   notes?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 interface CustomerFormProps {
@@ -174,7 +176,19 @@ export function CustomerForm({ customer }: CustomerFormProps) {
       
       if (isIndexedDb) {
         // IndexedDB mode
-        await storageManager.updateCustomer({ id, ...formData, gstin: formData.gstin || null, store_id: storeId || null })
+        const customerData = { 
+          id, 
+          ...formData, 
+          gstin: formData.gstin || null, 
+          store_id: storeId || null,
+          created_at: customer?.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        if (customer?.id) {
+          await storageManager.updateCustomer(customerData)
+        } else {
+          await storageManager.addCustomer(customerData)
+        }
         toast({ title: "Success", description: customer?.id ? "Customer updated" : "Customer created" })
       } else {
         // Supabase mode
@@ -321,8 +335,13 @@ export function CustomerForm({ customer }: CustomerFormProps) {
                 type="tel"
                 required
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+91 98765 43210"
+                onChange={(e) => {
+                  // Only allow digits and limit to 10
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setFormData({ ...formData, phone: digits });
+                }}
+                placeholder="9876543210"
+                maxLength={10}
               />
             </div>
 

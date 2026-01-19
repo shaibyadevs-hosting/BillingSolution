@@ -23,7 +23,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/dexie-client";
 import { createClient } from "@/lib/supabase/client";
-import { getDatabaseType } from "@/lib/utils/db-mode";
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode";
 import { useUserRole } from "@/lib/hooks/use-user-role";
 import { clearLicense, getStoredLicense } from "@/lib/utils/license-manager";
 import { useRouter } from "next/navigation";
@@ -36,16 +36,18 @@ export default function DashboardPage() {
 	const [licenseInfo, setLicenseInfo] = useState<any>(null);
 	const [clearingLicense, setClearingLicense] = useState(false);
 	const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole();
-	const dbType = getDatabaseType();
 	const router = useRouter();
 	const { toast } = useToast();
 
 	// Don't redirect employees anymore - show invoice form on dashboard instead
 
 	useEffect(() => {
-		// Local (IndexedDB) mode
-		if (dbType !== "supabase") {
-			(async () => {
+		(async () => {
+			// Check database mode first
+			const dbType = await getActiveDbModeAsync();
+			
+			// Local (IndexedDB) mode
+			if (dbType !== "supabase") {
 				try {
 					setLoading(true);
 					const [products, customers, invoices] = await Promise.all([
@@ -70,9 +72,8 @@ export default function DashboardPage() {
 				} finally {
 					setLoading(false);
 				}
-			})();
-		} else if (dbType === "supabase") {
-			(async () => {
+			} else {
+				// Supabase mode
 				setLoading(true);
 				const supabase = createClient();
 				const authType = localStorage.getItem("authType");
@@ -208,9 +209,9 @@ export default function DashboardPage() {
 					lowStockProducts: lowStockProducts || [],
 				});
 				setLoading(false);
-			})();
-		}
-	}, [dbType]);
+			}
+		})();
+	}, []);
 
 	// Fetch license info for admins
 	useEffect(() => {

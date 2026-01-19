@@ -79,6 +79,7 @@ export function ProductForm({ product }: ProductFormProps) {
     hsn_code: product?.hsn_code || "",
     gst_rate: product?.gst_rate || 18,
     is_active: product?.is_active ?? true,
+    selling_unit: product?.selling_unit || null,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -410,6 +411,28 @@ export function ProductForm({ product }: ProductFormProps) {
                 onChange={(e) => setFormData({ ...formData, price: Number.parseFloat(e.target.value) || 0 })}
                 placeholder="0.00"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="selling_unit">Selling Unit Type</Label>
+              <Select
+                value={formData.selling_unit || ""}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, selling_unit: value === "" ? null : value as "loose" | "together" })
+                }
+              >
+                <SelectTrigger id="selling_unit">
+                  <SelectValue placeholder="Select selling unit type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None (Default)</SelectItem>
+                  <SelectItem value="loose">Loose</SelectItem>
+                  <SelectItem value="together">Together</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Choose how this product is typically sold
+              </p>
             </div>
 
             <div className="space-y-2">

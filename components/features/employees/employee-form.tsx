@@ -359,8 +359,13 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
                 id="phone"
                 type="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+91 98765 43210"
+                onChange={(e) => {
+                  // Only allow digits and limit to 10
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setFormData({ ...formData, phone: digits });
+                }}
+                placeholder="9876543210"
+                maxLength={10}
               />
             </div>
 

@@ -39,11 +39,21 @@ export default function EmployeeAnalyticsPage() {
   })
 
   useEffect(() => {
-    if (!roleLoading && !isAdmin) {
+    // Wait for role to be determined
+    if (roleLoading) {
+      return
+    }
+    
+    // Only admin can access this page
+    if (!isAdmin) {
       router.push("/dashboard")
       return
     }
-    fetchAnalytics()
+    
+    // Only fetch analytics if we're an admin
+    if (isAdmin) {
+      fetchAnalytics()
+    }
   }, [isAdmin, roleLoading, router])
 
   const fetchAnalytics = async () => {

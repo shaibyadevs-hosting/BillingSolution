@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { db } from "@/lib/dexie-client";
-import { getDatabaseType } from "@/lib/utils/db-mode";
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Tooltip as UITooltip,
@@ -18,40 +18,50 @@ export default function InventoryReportPage() {
 	const [products, setProducts] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
 	const supabase = createClient();
-	const isExcel = getDatabaseType() === "excel";
 
 	useEffect(() => {
-		if (isExcel) {
-			(async () => {
-				try {
-					setLoading(true);
-					const list = await db.products.toArray();
-					setProducts(list || []);
-				} finally {
-					setLoading(false);
-				}
-			})();
-		} else {
-			fetchInventoryData();
-		}
-	}, [isExcel]);
+		fetchInventoryData();
+	}, []);
 
 	const fetchInventoryData = async () => {
+		setLoading(true);
 		try {
-			const {
-				data: { user },
-			} = await supabase.auth.getUser();
-			if (!user) return;
+			// Check database mode first
+			const dbMode = await getActiveDbModeAsync();
+			const isIndexedDb = dbMode === 'indexeddb';
 
-			const { data } = await supabase
-				.from("products")
-				.select("*")
-				.eq("user_id", user.id)
-				.order("stock_quantity", { ascending: true });
+			if (isIndexedDb) {
+				// IndexedDB mode - load from Dexie
+				const list = await db.products.toArray();
+				setProducts(list || []);
+			} else {
+				// Supabase mode - load from Supabase
+				const {
+					data: { user },
+				} = await supabase.auth.getUser();
+				if (!user) {
+					setProducts([]);
+					return;
+				}
 
-			setProducts(data || []);
+				const { data } = await supabase
+					.from("products")
+					.select("*")
+					.eq("user_id", user.id)
+					.order("stock_quantity", { ascending: true });
+
+				setProducts(data || []);
+			}
 		} catch (error) {
 			console.error("Error fetching inventory:", error);
+			// Fallback to IndexedDB on error
+			try {
+				const list = await db.products.toArray();
+				setProducts(list || []);
+			} catch (fallbackError) {
+				console.error("Fallback also failed:", fallbackError);
+				setProducts([]);
+			}
 		} finally {
 			setLoading(false);
 		}

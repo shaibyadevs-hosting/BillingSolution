@@ -89,11 +89,17 @@ export async function shareOnWhatsApp(
   const encodedMessage = encodeURIComponent(message)
   const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
   
-  // Prevent duplicate opens: Check if same URL was opened recently (within 1 second)
+  // Prevent duplicate opens: Check if same URL was opened recently (within 3 seconds)
   const now = Date.now()
-  if (lastWhatsAppUrl === whatsappUrl && (now - lastOpenTime) < 1000) {
+  if (lastWhatsAppUrl === whatsappUrl && (now - lastOpenTime) < 3000) {
     console.warn('[WhatsAppShare] Duplicate WhatsApp open detected and prevented')
     return { success: true } // Return success to avoid error, but don't open again
+  }
+  
+  // Also check if window is already open
+  if (whatsappWindowOpen && whatsappWindow && !whatsappWindow.closed) {
+    console.warn('[WhatsAppShare] WhatsApp window already open, preventing duplicate')
+    return { success: true }
   }
 
   // Prevent multiple WhatsApp windows

@@ -132,9 +132,12 @@ export function WhatsAppShareButton({
 		}
 		
 		// Set debounce timeout
+		if (shareTimeoutRef.current) {
+			clearTimeout(shareTimeoutRef.current);
+		}
 		shareTimeoutRef.current = setTimeout(() => {
 			shareTimeoutRef.current = null;
-		}, 2000); // 2 second debounce
+		}, 3000); // 3 second debounce
 
 		if (!isOnline) {
 			toast({

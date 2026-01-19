@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MoreVertical, Download, Edit2, Trash2, Printer } from "lucide-react"
+import { MoreVertical, Download, Edit2, Trash2, Printer, XCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { executeInvoiceAction } from "@/lib/invoice-document-engine"
@@ -48,6 +48,54 @@ export function InvoiceActions({ invoiceId, invoiceNumber, invoiceData }: Invoic
       toast({
         title: "Error",
         description: error?.message || "Failed to generate PDF",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleClearPayment = async () => {
+    if (!confirm("Are you sure you want to clear the payment status? This will change the invoice status to 'draft'.")) return
+
+    setIsLoading(true)
+    try {
+      const { isIndexedDbMode } = await import("@/lib/utils/db-mode")
+      const isIndexedDb = isIndexedDbMode()
+
+      if (isIndexedDb) {
+        // Update in IndexedDB
+        const { db } = await import("@/lib/dexie-client")
+        const invoice = await db.invoices.get(invoiceId)
+        if (invoice) {
+          await db.invoices.update(invoiceId, {
+            status: "draft",
+            updated_at: new Date().toISOString(),
+          })
+        }
+      } else {
+        // Update in Supabase
+        const { createClient } = await import("@/lib/supabase/client")
+        const supabase = createClient()
+        
+        const { error } = await supabase
+          .from("invoices")
+          .update({ status: "draft", updated_at: new Date().toISOString() })
+          .eq("id", invoiceId)
+        
+        if (error) throw error
+      }
+
+      toast({
+        title: "Success",
+        description: "Payment status cleared. Invoice status changed to 'draft'.",
+      })
+
+      router.refresh()
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to clear payment status",
         variant: "destructive",
       })
     } finally {
@@ -153,6 +201,12 @@ export function InvoiceActions({ invoiceId, invoiceNumber, invoiceData }: Invoic
           <Edit2 className="mr-2 h-4 w-4" />
           Edit
         </DropdownMenuItem>
+        {invoiceData?.status === "paid" && (
+          <DropdownMenuItem onClick={handleClearPayment}>
+            <XCircle className="mr-2 h-4 w-4" />
+            Clear Payment Status
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={handleDelete} className="text-destructive">
           <Trash2 className="mr-2 h-4 w-4" />
           Delete

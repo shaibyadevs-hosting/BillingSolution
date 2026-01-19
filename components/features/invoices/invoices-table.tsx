@@ -95,8 +95,18 @@ export function InvoicesTable({
 				const { storageManager } = await import("@/lib/storage-manager");
 				await storageManager.deleteInvoice(id);
 			} else {
-				// Delete from Supabase
+				// Delete from Supabase - must delete invoice_items first (foreign key constraint)
 				const supabase = createClient();
+				
+				// Delete invoice items first
+				const { error: itemsError } = await supabase
+					.from("invoice_items")
+					.delete()
+					.eq("invoice_id", id);
+				
+				if (itemsError) throw itemsError;
+				
+				// Then delete invoice
 				const { error } = await supabase.from("invoices").delete().eq("id", id);
 				if (error) throw error;
 			}

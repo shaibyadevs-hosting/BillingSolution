@@ -20,28 +20,54 @@ export default function ReportsPage() {
 		(async () => {
 			setLoading(true);
 			try {
-				// Try cloud first, then fallback to local
-				try {
-					const supabase = createClient();
-					const {
-						data: { user },
-					} = await supabase.auth.getUser();
-					if (!user) {
-						throw new Error("No user");
-					}
-					const [{ data: inv }, { data: prod }] = await Promise.all([
-						supabase.from("invoices").select("*").eq("user_id", user.id),
-						supabase.from("products").select("*").eq("user_id", user.id),
-					]);
-					if (inv) setInvoices(inv);
-					if (prod) setProducts(prod);
-				} catch {
+				// Check database mode first
+				const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode");
+				const dbMode = await getActiveDbModeAsync();
+				const isIndexedDb = dbMode === 'indexeddb';
+
+				if (isIndexedDb) {
+					// IndexedDB mode - load from Dexie
 					const [inv, prod] = await Promise.all([
 						db.invoices.toArray(),
 						db.products.toArray(),
 					]);
 					setInvoices(inv || []);
 					setProducts(prod || []);
+				} else {
+					// Supabase mode - load from Supabase
+					const supabase = createClient();
+					const {
+						data: { user },
+					} = await supabase.auth.getUser();
+					if (!user) {
+						// Fallback to IndexedDB if no user
+						const [inv, prod] = await Promise.all([
+							db.invoices.toArray(),
+							db.products.toArray(),
+						]);
+						setInvoices(inv || []);
+						setProducts(prod || []);
+					} else {
+						const [{ data: inv }, { data: prod }] = await Promise.all([
+							supabase.from("invoices").select("*").eq("user_id", user.id),
+							supabase.from("products").select("*").eq("user_id", user.id),
+						]);
+						if (inv) setInvoices(inv);
+						if (prod) setProducts(prod);
+					}
+				}
+			} catch (error) {
+				console.error("[Reports] Error loading data:", error);
+				// Fallback to IndexedDB on error
+				try {
+					const [inv, prod] = await Promise.all([
+						db.invoices.toArray(),
+						db.products.toArray(),
+					]);
+					setInvoices(inv || []);
+					setProducts(prod || []);
+				} catch (fallbackError) {
+					console.error("[Reports] Fallback also failed:", fallbackError);
 				}
 			} finally {
 				setLoading(false);

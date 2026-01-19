@@ -258,6 +258,7 @@ interface Product {
 	stock_quantity?: number;
 	sku?: string | null;
 	category?: string | null;
+	selling_unit?: "loose" | "together" | null;
 }
 
 interface BusinessSettings {
@@ -274,6 +275,7 @@ interface InvoiceFormProps {
 	storeId?: string | null;
 	employeeId?: string;
 	onCustomersUpdate?: (customers: Customer[]) => void;
+	invoice?: any; // Invoice data for editing mode
 }
 
 // LineItem interface for form state
@@ -290,6 +292,7 @@ interface LineItem {
 	line_total?: number;
 	gst_amount?: number;
 	created_at?: string;
+	selling_unit?: "loose" | "together" | null;
 }
 
 export function InvoiceForm({
@@ -299,6 +302,7 @@ export function InvoiceForm({
 	storeId,
 	employeeId,
 	onCustomersUpdate,
+	invoice: existingInvoice,
 }: InvoiceFormProps) {
 	const router = useRouter();
 	const { toast } = useToast();
@@ -306,7 +310,8 @@ export function InvoiceForm({
 	const { invalidateInvoices, invalidateProducts } = useInvalidateQueries();
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSharing, setIsSharing] = useState(false);
-	const [invoiceNumber, setInvoiceNumber] = useState("");
+	const isEditMode = !!existingInvoice;
+	const [invoiceNumber, setInvoiceNumber] = useState(existingInvoice?.invoice_number || "");
 	const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers);
 	const [products, setProducts] = useState<Product[]>(initialProducts);
 	const [storeName, setStoreName] = useState<string>("Business");
@@ -539,6 +544,53 @@ export function InvoiceForm({
 
 	const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
+	// Initialize form from existing invoice if in edit mode
+	useEffect(() => {
+		if (existingInvoice && isEditMode) {
+			setInvoiceNumber(existingInvoice.invoice_number || "");
+			setInvoiceDate(existingInvoice.invoice_date || new Date().toISOString().split("T")[0]);
+			setCustomerId(existingInvoice.customer_id || "");
+			setIsGstInvoice(existingInvoice.is_gst_invoice ?? true);
+			setIsSameState(true); // Default, can be calculated from invoice if needed
+			
+			// Load line items
+			if (existingInvoice.invoice_items && Array.isArray(existingInvoice.invoice_items)) {
+				const items = existingInvoice.invoice_items.map((item: any) => ({
+					id: item.id || crypto.randomUUID(),
+					invoice_id: item.invoice_id,
+					product_id: item.product_id || null,
+					description: item.description || "",
+					quantity: item.quantity || 1,
+					unit_price: item.unit_price || 0,
+					discount_percent: item.discount_percent || 0,
+					gst_rate: item.gst_rate || 0,
+					hsn_code: item.hsn_code || "",
+					line_total: item.line_total,
+					gst_amount: item.gst_amount,
+					created_at: item.created_at,
+					selling_unit: item.selling_unit || null,
+				}));
+				setLineItems(items);
+			}
+			
+			// Load customer data if available
+			if (existingInvoice.customers || existingInvoice.customer) {
+				const customer = existingInvoice.customers || existingInvoice.customer;
+				setCustomerData({
+					name: customer.name || "",
+					phone: customer.phone || "",
+					email: customer.email || "",
+					gstin: customer.gstin || "",
+					billing_address: customer.billing_address || "",
+					city: customer.city || "",
+					state: customer.state || "",
+					pincode: customer.pincode || "",
+					isNewCustomer: false,
+				});
+			}
+		}
+	}, [existingInvoice, isEditMode]);
+
 	// Load B2B mode status and enforce GST when B2B is enabled
 	useEffect(() => {
 		const loadB2BStatus = async () => {
@@ -568,6 +620,7 @@ export function InvoiceForm({
 				discount_percent: 0,
 				gst_rate: settings?.default_gst_rate || 18,
 				hsn_code: "",
+				selling_unit: null,
 			},
 		]);
 	}, [settings?.default_gst_rate]);
@@ -621,8 +674,9 @@ export function InvoiceForm({
 								product_id: value,
 								description: product.name,
 								unit_price: product.price,
-								gst_rate: product.gst_rate,
+								gst_rate: product.gst_rate || settings?.default_gst_rate || 18,
 								hsn_code: product.hsn_code || "",
+								selling_unit: product.selling_unit || null,
 							};
 						}
 					}
@@ -729,8 +783,9 @@ export function InvoiceForm({
 				quantity: 1,
 				unit_price: product.price,
 				discount_percent: 0,
-				gst_rate: product.gst_rate,
+				gst_rate: product.gst_rate || settings?.default_gst_rate || 18,
 				hsn_code: product.hsn_code || "",
+				selling_unit: product.selling_unit || null,
 			};
 			setLineItems([...lineItems, newLineItem]);
 
@@ -763,15 +818,17 @@ export function InvoiceForm({
 
 		lineItems.forEach((item) => {
 			// Fix: Ensure we pass the correct format to calculateLineItem
+			// If GST is disabled, use 0% GST rate for calculation
+			const effectiveGstRate = isGstInvoice ? (item.gst_rate || 0) : 0;
 			const calc = calculateLineItem({
 				unitPrice: item.unit_price,
 				discountPercent: item.discount_percent,
-				gstRate: item.gst_rate,
+				gstRate: effectiveGstRate,
 				quantity: item.quantity,
 			});
 			subtotal += calc.taxableAmount;
 
-			if (isGstInvoice) {
+			if (isGstInvoice && effectiveGstRate > 0) {
 				totalGst += calc.gstAmount;
 				if (isSameState) {
 					cgst += calc.gstAmount / 2;
@@ -1231,20 +1288,27 @@ export function InvoiceForm({
 			}
 
 			// Validate store_id is present (required after RLS rebuild)
-			if (!storeId) {
-				toast({
-					title: "Error",
-					description:
-						"Store ID is required. Please select a store or contact your administrator.",
-					variant: "destructive",
-				});
-				setIsLoading(false);
-				return;
+			// Try to get from localStorage if not provided
+			let finalStoreId = storeId;
+			if (!finalStoreId) {
+				const currentStoreId = localStorage.getItem("currentStoreId");
+				if (currentStoreId) {
+					finalStoreId = currentStoreId;
+				} else {
+					toast({
+						title: "Error",
+						description:
+							"Store ID is required. Please select a store or contact your administrator.",
+						variant: "destructive",
+					});
+					setIsLoading(false);
+					return;
+				}
 			}
 
-			const invoiceId = crypto.randomUUID();
+			const invoiceId = isEditMode && existingInvoice?.id ? existingInvoice.id : crypto.randomUUID();
 			console.log(
-				"[InvoiceForm] Creating invoice with customer_id:",
+				`[InvoiceForm] ${isEditMode ? 'Updating' : 'Creating'} invoice with customer_id:`,
 				finalCustomerId
 			);
 			const invoiceData = {
@@ -1252,17 +1316,18 @@ export function InvoiceForm({
 				customer_id: finalCustomerId,
 				invoice_number: invoiceNumber,
 				invoice_date: invoiceDate,
-				status: "draft",
+				status: isEditMode ? (existingInvoice?.status || "draft") : "draft",
 				is_gst_invoice: isGstInvoice,
 				subtotal: t.subtotal,
 				cgst_amount: t.cgst,
 				sgst_amount: t.sgst,
 				igst_amount: t.igst,
 				total_amount: t.total,
-				created_at: new Date().toISOString(),
-				store_id: storeId, // Required - validated above
-				employee_id: employeeId || undefined,
-				created_by_employee_id: employeeId || undefined,
+				created_at: isEditMode ? (existingInvoice?.created_at || new Date().toISOString()) : new Date().toISOString(),
+				updated_at: new Date().toISOString(),
+				store_id: finalStoreId, // Required - validated above
+				employee_id: employeeId || existingInvoice?.employee_id || undefined,
+				created_by_employee_id: employeeId || existingInvoice?.created_by_employee_id || undefined,
 			};
 
 			// Calculate line totals and GST for each item (filter out empty items)
@@ -1291,7 +1356,8 @@ export function InvoiceForm({
 					hsn_code: li.hsn_code || null,
 					line_total: calc.taxableAmount + calc.gstAmount,
 					gst_amount: calc.gstAmount,
-					created_at: new Date().toISOString(),
+					created_at: li.created_at || new Date().toISOString(),
+					selling_unit: li.selling_unit || null,
 				};
 			});
 
@@ -1310,32 +1376,37 @@ export function InvoiceForm({
 			);
 
 			if (isIndexedDb) {
-				// Save to Dexie
-				await storageManager.addInvoice(invoiceData, items);
-
-				// Decrease product stock quantities (use original products, not modified state)
-				await updateProductStock(
-					items,
-					isIndexedDb,
-					undefined,
-					undefined,
-					initialProducts
-				);
+				// Save or update in Dexie
+				if (isEditMode) {
+					await storageManager.updateInvoice(invoiceData, items);
+				} else {
+					await storageManager.addInvoice(invoiceData, items);
+					// Decrease product stock quantities only for new invoices
+					await updateProductStock(
+						items,
+						isIndexedDb,
+						undefined,
+						undefined,
+						initialProducts
+					);
+				}
 
 				// Dispatch event to notify customer detail page to refresh
 				window.dispatchEvent(
-					new CustomEvent("invoice:created", {
-						detail: { customer_id: customerId },
+					new CustomEvent(isEditMode ? "invoice:updated" : "invoice:created", {
+						detail: { customer_id: customerId, invoice_id: invoiceId },
 					})
 				);
 
 				// Invalidate cache for instant UI update
 				await invalidateInvoices();
-				await invalidateProducts(); // Also invalidate products since stock changed
+				if (!isEditMode) {
+					await invalidateProducts(); // Also invalidate products since stock changed
+				}
 
 				toast({
 					title: "Success",
-					description: "Invoice created successfully",
+					description: isEditMode ? "Invoice updated successfully" : "Invoice created successfully",
 				});
 				router.push("/invoices");
 				router.refresh();
@@ -1453,39 +1524,61 @@ export function InvoiceForm({
 					throw invoiceError;
 				}
 
-				const itemsWithInvoiceId = items.map((item) => ({
-					...item,
-					invoice_id: newInvoice.id,
-				}));
+				if (isEditMode) {
+					// Update invoice items: delete old ones and insert new ones
+					const { error: deleteItemsError } = await supabase
+						.from("invoice_items")
+						.delete()
+						.eq("invoice_id", invoiceId);
+					if (deleteItemsError) throw deleteItemsError;
 
-				const { error: itemsError } = await supabase
-					.from("invoice_items")
-					.insert(itemsWithInvoiceId);
-				if (itemsError) throw itemsError;
+					const itemsWithInvoiceId = items.map((item) => ({
+						...item,
+						invoice_id: invoiceId,
+					}));
 
-				// Decrease product stock quantities (use original products, not modified state)
-				await updateProductStock(
-					items,
-					isIndexedDb,
-					supabase,
-					adminUserId,
-					initialProducts
-				);
+					const { error: itemsError } = await supabase
+						.from("invoice_items")
+						.insert(itemsWithInvoiceId);
+					if (itemsError) throw itemsError;
+				} else {
+					// Insert new invoice items
+					const itemsWithInvoiceId = items.map((item) => ({
+						...item,
+						invoice_id: newInvoice.id,
+					}));
+
+					const { error: itemsError } = await supabase
+						.from("invoice_items")
+						.insert(itemsWithInvoiceId);
+					if (itemsError) throw itemsError;
+
+					// Decrease product stock quantities only for new invoices
+					await updateProductStock(
+						items,
+						isIndexedDb,
+						supabase,
+						adminUserId,
+						initialProducts
+					);
+				}
 
 				// Dispatch event to notify customer detail page to refresh
 				window.dispatchEvent(
-					new CustomEvent("invoice:created", {
-						detail: { customer_id: customerId },
+					new CustomEvent(isEditMode ? "invoice:updated" : "invoice:created", {
+						detail: { customer_id: customerId, invoice_id: invoiceId },
 					})
 				);
 
 				// Invalidate cache for instant UI update
 				await invalidateInvoices();
-				await invalidateProducts(); // Also invalidate products since stock changed
+				if (!isEditMode) {
+					await invalidateProducts(); // Also invalidate products since stock changed
+				}
 
 				toast({
 					title: "Success",
-					description: "Invoice created successfully",
+					description: isEditMode ? "Invoice updated successfully" : "Invoice created successfully",
 				});
 				router.push("/invoices");
 				router.refresh();
@@ -1662,16 +1755,23 @@ export function InvoiceForm({
 			}
 
 			// Validate store_id is present (required after RLS rebuild)
-			if (!storeId) {
-				toast({
-					title: "Error",
-					description:
-						"Store ID is required. Please select a store or contact your administrator.",
-					variant: "destructive",
-				});
-				setIsSharing(false);
-				setIsLoading(false);
-				return;
+			// Try to get from localStorage if not provided
+			let finalStoreIdForShare = storeId;
+			if (!finalStoreIdForShare) {
+				const currentStoreId = localStorage.getItem("currentStoreId");
+				if (currentStoreId) {
+					finalStoreIdForShare = currentStoreId;
+				} else {
+					toast({
+						title: "Error",
+						description:
+							"Store ID is required. Please select a store or contact your administrator.",
+						variant: "destructive",
+					});
+					setIsSharing(false);
+					setIsLoading(false);
+					return;
+				}
 			}
 
 			invoiceId = crypto.randomUUID();
@@ -1688,7 +1788,7 @@ export function InvoiceForm({
 				igst_amount: t.igst,
 				total_amount: t.total,
 				created_at: new Date().toISOString(),
-				store_id: storeId, // Required - validated above
+				store_id: finalStoreIdForShare, // Required - validated above
 				employee_id: employeeId || undefined,
 				created_by_employee_id: employeeId || undefined,
 			};
@@ -1718,7 +1818,8 @@ export function InvoiceForm({
 					hsn_code: li.hsn_code || null,
 					line_total: calc.taxableAmount + calc.gstAmount,
 					gst_amount: calc.gstAmount,
-					created_at: new Date().toISOString(),
+					created_at: li.created_at || new Date().toISOString(),
+					selling_unit: li.selling_unit || null,
 				};
 			});
 
@@ -2531,6 +2632,9 @@ export function InvoiceForm({
 																		<TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">
 																			Qty
 																		</TableHead>
+																		<TableHead className="w-[80px] text-center px-1.5 py-2 text-xs font-semibold">
+																			Unit
+																		</TableHead>
 																		<TableHead className="w-[90px] text-center px-1.5 py-2 text-xs font-semibold">
 																			Rate
 																		</TableHead>
@@ -2682,6 +2786,27 @@ export function InvoiceForm({
 																											: ""}
 																									</div>
 																								</div>
+																							</TableCell>
+																							<TableCell className="px-1.5 py-1.5">
+																								<Select
+																									value={item.selling_unit || ""}
+																									onValueChange={(value) =>
+																										updateLineItem(
+																											item.id,
+																											"selling_unit",
+																											value === "" ? null : value
+																										)
+																									}
+																								>
+																									<SelectTrigger className="h-7 text-xs">
+																										<SelectValue placeholder="Unit" />
+																									</SelectTrigger>
+																									<SelectContent>
+																										<SelectItem value="">None</SelectItem>
+																										<SelectItem value="loose">Loose</SelectItem>
+																										<SelectItem value="together">Together</SelectItem>
+																									</SelectContent>
+																								</Select>
 																							</TableCell>
 																							<TableCell
 																								className={`px-1.5 py-1 transition-all duration-300 ${
@@ -3193,6 +3318,9 @@ export function InvoiceForm({
 																<TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">
 																	Qty
 																</TableHead>
+																<TableHead className="w-[80px] text-center px-1.5 py-2 text-xs font-semibold">
+																	Unit
+																</TableHead>
 																<TableHead className="w-[90px] text-center px-1.5 py-2 text-xs font-semibold">
 																	Rate
 																</TableHead>
@@ -3268,6 +3396,27 @@ export function InvoiceForm({
 																			/>
 																		</TableCell>
 																		<TableCell className="px-1.5 py-1.5">
+																			<Select
+																				value={item.selling_unit || ""}
+																				onValueChange={(value) =>
+																					updateLineItem(
+																						item.id,
+																						"selling_unit",
+																						value === "" ? null : value
+																					)
+																				}
+																			>
+																				<SelectTrigger className="h-7 text-xs">
+																					<SelectValue placeholder="Unit" />
+																				</SelectTrigger>
+																				<SelectContent>
+																					<SelectItem value="">None</SelectItem>
+																					<SelectItem value="loose">Loose</SelectItem>
+																					<SelectItem value="together">Together</SelectItem>
+																				</SelectContent>
+																			</Select>
+																		</TableCell>
+																		<TableCell className="px-1.5 py-1.5">
 																			<Input
 																				type="number"
 																				value={item.unit_price || ""}
@@ -3330,16 +3479,19 @@ export function InvoiceForm({
 																			<TableCell className="px-1.5 py-1.5">
 																				<Select
 																					value={String(item.gst_rate || 0)}
-																					onValueChange={(value) =>
-																						updateLineItem(
-																							item.id,
-																							"gst_rate",
-																							parseFloat(value)
-																						)
-																					}
+																					onValueChange={(value) => {
+																						const numValue = parseFloat(value);
+																						if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
+																							updateLineItem(
+																								item.id,
+																								"gst_rate",
+																								numValue
+																							);
+																						}
+																					}}
 																				>
 																					<SelectTrigger className="h-7 text-xs">
-																						<SelectValue />
+																						<SelectValue placeholder="Select GST %" />
 																					</SelectTrigger>
 																					<SelectContent>
 																						<SelectItem value="0">
