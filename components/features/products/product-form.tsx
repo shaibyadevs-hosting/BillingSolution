@@ -220,47 +220,142 @@ export function ProductForm({ product }: ProductFormProps) {
       const { getCurrentStoreId } = await import("@/lib/utils/get-current-store-id")
       const storeId = await getCurrentStoreId()
 
+      // Prepare payload with proper data formatting
+      const now = new Date().toISOString()
       const payload: any = { 
         id: product?.id || uuidv4(), 
-        ...formData,
-        store_id: storeId || null, // Set store_id for store-scoped isolation
+        name: formData.name.trim(),
+        sku: formData.sku?.trim() || null,
+        category: formData.category?.trim() || null,
+        price: Number(formData.price) || 0,
+        cost_price: formData.cost_price ? Number(formData.cost_price) : null,
+        stock_quantity: Number(formData.stock_quantity) || 0,
+        unit: formData.unit || "piece",
+        hsn_code: formData.hsn_code?.trim() || null,
+        gst_rate: Number(formData.gst_rate) || 0,
+        is_active: formData.is_active ?? true,
+        selling_unit: formData.selling_unit || null,
+        store_id: storeId || null,
+        // Add timestamps for IndexedDB
+        created_at: product?.id ? undefined : now,
+        updated_at: now,
       }
 
       if (isIndexedDb) {
         // Save to Dexie
-        if (product?.id) {
-          await storageManager.updateProduct(payload)
-          toast({ title: "Success", description: "Product updated" })
-        } else {
-          await storageManager.addProduct(payload)
-          toast({ title: "Success", description: "Product created" })
+        try {
+          if (product?.id) {
+            await storageManager.updateProduct(payload)
+            toast({ title: "Success", description: "Product updated" })
+          } else {
+            await storageManager.addProduct(payload)
+            toast({ title: "Success", description: "Product created" })
+          }
+        } catch (dbError: any) {
+          console.error("[ProductForm] IndexedDB error:", dbError)
+          throw new Error(`Failed to save product: ${dbError?.message || "Database error"}`)
         }
       } else {
         // Save to Supabase
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
+        const authType = localStorage.getItem("authType")
+        let userId: string | null = null
+        let finalStoreId = storeId
+
+        // Handle employee auth - get admin_user_id from store
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            try {
+              const session = JSON.parse(empSession)
+              finalStoreId = session.storeId || storeId
+              
+              if (finalStoreId) {
+                const { data: store } = await supabase
+                  .from('stores')
+                  .select('admin_user_id')
+                  .eq('id', finalStoreId)
+                  .single()
+                
+                if (store?.admin_user_id) {
+                  userId = store.admin_user_id
+                } else {
+                  throw new Error("Store information not found. Please contact your administrator.")
+                }
+              } else {
+                throw new Error("Store ID not found in employee session.")
+              }
+            } catch (e: any) {
+              console.error("[ProductForm] Employee session error:", e)
+              toast({ 
+                title: "Error", 
+                description: e.message || "Failed to get store information", 
+                variant: "destructive" 
+              })
+              setIsLoading(false)
+              return
+            }
+          } else {
+            toast({ 
+              title: "Error", 
+              description: "Employee session not found. Please log out and log in again.", 
+              variant: "destructive" 
+            })
+            setIsLoading(false)
+            return
+          }
+        } else {
+          // For admin users
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) {
+            toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
+            setIsLoading(false)
+            return
+          }
+          userId = user.id
+        }
+
+        if (!userId) {
+          toast({ title: "Error", description: "Could not determine user ID", variant: "destructive" })
+          setIsLoading(false)
           return
         }
 
-        // Get current store ID for store-scoped isolation
-        const { getCurrentStoreId } = await import("@/lib/utils/get-current-store-id")
-        const storeId = await getCurrentStoreId()
+        // Prepare Supabase data (remove IndexedDB-specific fields, add user_id)
+        const productData: any = {
+          id: payload.id,
+          name: payload.name,
+          sku: payload.sku,
+          category: payload.category,
+          price: payload.price,
+          cost_price: payload.cost_price,
+          stock_quantity: payload.stock_quantity,
+          unit: payload.unit,
+          hsn_code: payload.hsn_code,
+          gst_rate: payload.gst_rate,
+          is_active: payload.is_active,
+          user_id: userId,
+          store_id: finalStoreId || null,
+        }
 
-        const productData = {
-          ...payload,
-          user_id: user.id,
-          store_id: storeId || null, // Set store_id for store-scoped isolation
+        // Add selling_unit if it exists (check if column exists in Supabase)
+        if (payload.selling_unit !== undefined) {
+          productData.selling_unit = payload.selling_unit
         }
 
         if (product?.id) {
           const { error } = await supabase.from("products").update(productData).eq("id", product.id)
-          if (error) throw error
+          if (error) {
+            console.error("[ProductForm] Supabase update error:", error)
+            throw new Error(`Failed to update product: ${error.message}`)
+          }
           toast({ title: "Success", description: "Product updated" })
         } else {
           const { error } = await supabase.from("products").insert(productData)
-          if (error) throw error
+          if (error) {
+            console.error("[ProductForm] Supabase insert error:", error)
+            throw new Error(`Failed to create product: ${error.message}`)
+          }
           toast({ title: "Success", description: "Product created" })
         }
       }
@@ -471,6 +566,19 @@ export function ProductForm({ product }: ProductFormProps) {
                 onChange={(e) => setFormData({ ...formData, gst_rate: Number.parseFloat(e.target.value) || 0 })}
                 placeholder="18"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="hsn_code">HSN Code</Label>
+              <Input
+                id="hsn_code"
+                value={formData.hsn_code || ""}
+                onChange={(e) => setFormData({ ...formData, hsn_code: e.target.value })}
+                placeholder="e.g., 8517"
+              />
+              <p className="text-xs text-muted-foreground">
+                {isB2BEnabled ? "Required for B2B invoices" : "Optional - Required for B2B invoices"}
+              </p>
             </div>
 
           </div>
