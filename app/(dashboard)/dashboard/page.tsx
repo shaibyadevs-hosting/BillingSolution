@@ -33,6 +33,7 @@ export default function DashboardPage() {
 	const [localStats, setLocalStats] = useState<any>(null);
 	const [sbStats, setSbStats] = useState<any>(null);
 	const [loading, setLoading] = useState(true);
+	const [dbType, setDbType] = useState<string | null>(null);
 	const [licenseInfo, setLicenseInfo] = useState<any>(null);
 	const [clearingLicense, setClearingLicense] = useState(false);
 	const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole();
@@ -44,10 +45,11 @@ export default function DashboardPage() {
 	useEffect(() => {
 		(async () => {
 			// Check database mode first
-			const dbType = await getActiveDbModeAsync();
+			const mode = await getActiveDbModeAsync();
+			setDbType(mode);
 			
 			// Local (IndexedDB) mode
-			if (dbType !== "supabase") {
+			if (mode !== "supabase") {
 				try {
 					setLoading(true);
 					const [products, customers, invoices] = await Promise.all([
@@ -303,9 +305,10 @@ export default function DashboardPage() {
 		}
 	};
 
+	// Use whichever stats are available; prefer by dbType when known
 	const stats = dbType === "supabase" ? sbStats : localStats;
 
-	if (loading || !stats) {
+	if (loading || dbType === null || !stats) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px] px-4">
 				<div className="text-center space-y-2">

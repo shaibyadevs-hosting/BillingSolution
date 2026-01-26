@@ -24,7 +24,8 @@ export default function SettingsPage() {
   const router = useRouter()
   const { toast } = useToast()
   const isExcel = false
-  const dbType = getDatabaseType()
+  // Safe for SSR: getDatabaseType() returns 'indexeddb' when window is undefined
+  const dbType = typeof window !== "undefined" ? getDatabaseType() : "indexeddb"
   const [offlineEnabled, setOfflineEnabled] = useState(false)
   const { isEmployee } = useUserRole()
 
