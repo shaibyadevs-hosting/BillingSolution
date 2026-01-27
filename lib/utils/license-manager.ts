@@ -31,27 +31,23 @@ export async function validateLicenseOnline(
 	licenseKey: string,
 	macAddress?: string
 ): Promise<{ valid: boolean; licenseData?: LicenseInfo; error?: string }> {
-	console.log("=".repeat(80));
-	console.log("[LicenseManager] ===== LICENSE VALIDATION STARTED =====");
-	console.log("=".repeat(80));
-	console.log("[LicenseManager] Input Data:");
-	console.log("  - License Key (raw):", licenseKey);
-	console.log("  - MAC Address (raw):", macAddress || "not provided");
+	const isDev = process.env.NODE_ENV === "development";
+	if (isDev) {
+		console.log("=".repeat(80));
+		console.log("[LicenseManager] ===== LICENSE VALIDATION STARTED =====");
+		console.log("=".repeat(80));
+		console.log("[LicenseManager] Input Data:");
+		console.log("  - License Key (raw):", licenseKey);
+		console.log("  - MAC Address (raw):", macAddress || "not provided");
+	}
 
 	try {
 		// Normalize license key: trim and uppercase to match creation format
 		const normalizedLicenseKey = licenseKey.trim().toUpperCase();
-		console.log(
-			"[LicenseManager] Normalized License Key:",
-			normalizedLicenseKey
-		);
-		// Use API route instead of direct client query to bypass RLS
-		// The client-side query is blocked by RLS policies (only admins can read)
-		// The API route uses service role key to bypass RLS for license validation
-		console.log(
-			"[LicenseManager] Using API route to validate license (bypasses RLS)"
-		);
-		console.log("[LicenseManager] Calling: POST /api/license/validate");
+		if (isDev) {
+			console.log("[LicenseManager] Normalized License Key:", normalizedLicenseKey);
+			console.log("[LicenseManager] Calling: POST /api/license/validate");
+		}
 
 		const response = await fetch("/api/license/validate", {
 			method: "POST",
@@ -66,8 +62,10 @@ export async function validateLicenseOnline(
 
 		const result = await response.json();
 
-		console.log("[LicenseManager] API Response Status:", response.status);
-		console.log("[LicenseManager] API Response:", result);
+		if (isDev) {
+			console.log("[LicenseManager] API Response Status:", response.status);
+			console.log("[LicenseManager] API Response:", result);
+		}
 
 		if (!response.ok) {
 			console.error("[LicenseManager] API route error:", result);
@@ -78,9 +76,11 @@ export async function validateLicenseOnline(
 		}
 
 		if (!result.valid) {
-			console.warn("[LicenseManager] ❌ LICENSE VALIDATION FAILED");
-			console.warn("[LicenseManager] Error:", result.error);
-			console.log("=".repeat(80));
+			if (process.env.NODE_ENV === "development") {
+				console.warn("[LicenseManager] ❌ LICENSE VALIDATION FAILED");
+				console.warn("[LicenseManager] Error:", result.error);
+				console.log("=".repeat(80));
+			}
 			return result;
 		}
 
@@ -366,20 +366,15 @@ export async function checkLicenseOnLaunch(): Promise<{
 				};
 			}
 
-			// Check if license was revoked online
+			// Check if license was explicitly revoked online (do not require reactivation for "not found")
 			if (!onlineValidation.valid) {
-				console.warn(
-					"[LicenseManager] License is invalid online:",
-					onlineValidation.error
-				);
+				const err = (onlineValidation.error || "").toLowerCase();
 
-				// Check if it's a critical error (revoked, not found)
-				if (
-					onlineValidation.error?.includes("revoked") ||
-					onlineValidation.error?.includes("not found")
-				) {
-					console.error(
-						"[LicenseManager] License revoked or not found, requiring reactivation"
+				// Only require reactivation for explicit revoke/expired. "Not found" = not in cloud (e.g. never seeded, or legacy); allow offline use.
+				if (err.includes("revoked") || err.includes("has expired")) {
+					console.warn(
+						"[LicenseManager] License revoked or expired online:",
+						onlineValidation.error
 					);
 					return {
 						valid: false,
@@ -388,8 +383,10 @@ export async function checkLicenseOnLaunch(): Promise<{
 					};
 				}
 
-				// For other errors (network, etc), allow offline use
-				console.log("[LicenseManager] Network error, allowing offline use");
+				// "Not found", network, timeout, or other: allow offline use with stored license
+				if (process.env.NODE_ENV === "development" && onlineValidation.error) {
+					console.log("[LicenseManager] Online check failed (not revoked), allowing offline use:", onlineValidation.error);
+				}
 				return {
 					valid: true,
 					licenseInfo: storedLicense,

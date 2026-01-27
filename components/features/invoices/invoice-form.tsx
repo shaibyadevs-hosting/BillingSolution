@@ -53,7 +53,9 @@ import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
 // DORMANT: R2 engine removed - Supabase is now primary
 // import { executeInvoiceAction } from "@/lib/invoice-document-engine";
 import { prepareInvoiceDocumentData } from "@/lib/invoice-document-engine";
-import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
+// DORMANT: Slip functionality removed - using A4 invoice instead
+// import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
+import { generateInvoicePDF } from "@/lib/utils/invoice-pdf";
 import { LogoConfigModal } from "@/components/features/invoices/logo-config-modal";
 // DORMANT: R2 error modal removed - Supabase uses RLS error modal
 // import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
@@ -887,7 +889,7 @@ export function InvoiceForm({
 					city: data.city || null,
 					state: data.state || null,
 					pincode: data.pincode || null,
-					store_id: currentStoreId || null, // Store-scoped isolation
+					store_id: currentStoreId || undefined, // Store-scoped isolation - use undefined instead of null
 					created_at: new Date().toISOString(),
 					updated_at: new Date().toISOString(),
 				};
@@ -2050,9 +2052,11 @@ export function InvoiceForm({
 				duration: 2000,
 			});
 
-			const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
-				useServerSide: false, // Use client-side for consistency
-			});
+			// DORMANT: Slip removed - using A4 invoice PDF instead
+			// const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
+			// 	useServerSide: false, // Use client-side for consistency
+			// });
+			const pdfBlob = await generateInvoicePDF(pdfData);
 
 			// Step 3: Get userId (admin's ID for employees)
 			const supabase = createClient();

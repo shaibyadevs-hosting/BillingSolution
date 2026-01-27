@@ -11,6 +11,12 @@ export interface InvoicePDFData extends InvoiceData {
 	businessEmail?: string;
 	logoUrl?: string;
 	servedBy?: string; // Employee or admin name who generated the invoice
+	proprietor?: string;
+	bankName?: string;
+	accountName?: string;
+	accountNumber?: string;
+	ifscCode?: string;
+	invoiceType?: string;
 }
 
 export async function generateInvoicePDF(data: InvoicePDFData): Promise<Blob> {

@@ -113,9 +113,11 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
           const storedLicense = await Promise.race([
             getStoredLicense(),
             new Promise<null>((resolve) => setTimeout(() => {
-              console.warn('[LicenseGuard] getStoredLicense timeout after 1 second');
+              if (process.env.NODE_ENV === 'development') {
+                console.warn('[LicenseGuard] getStoredLicense timeout after 2.5s');
+              }
               resolve(null);
-            }, 1000)),
+            }, 2500)),
           ]);
 
           if (storedLicense && isLicenseValid(storedLicense)) {

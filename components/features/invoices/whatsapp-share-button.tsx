@@ -26,7 +26,9 @@ import { Label } from "@/components/ui/label";
 // import { executeInvoiceAction } from "@/lib/invoice-document-engine";
 // import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
 import { uploadInvoicePDFToSupabase } from "@/lib/utils/invoice-supabase-client";
-import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
+// DORMANT: Slip functionality removed - using A4 invoice instead
+// import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
+import { generateInvoicePDF } from "@/lib/utils/invoice-pdf";
 import { prepareInvoiceDocumentData } from "@/lib/invoice-document-engine";
 import { generateWhatsAppBillMessage, shareOnWhatsApp } from "@/lib/utils/whatsapp-bill";
 import { createClient } from "@/lib/supabase/client";
@@ -170,9 +172,11 @@ export function WhatsAppShareButton({
 				duration: 2000,
 			});
 
-			const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
-				useServerSide: false, // Use client-side for consistency
-			});
+			// DORMANT: Slip removed - using A4 invoice PDF instead
+			// const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
+			// 	useServerSide: false, // Use client-side for consistency
+			// });
+			const pdfBlob = await generateInvoicePDF(pdfData);
 
 			// Step 3: Get userId (admin's ID for employees)
 			const supabase = createClient();
@@ -352,9 +356,11 @@ export function WhatsAppShareButton({
 				duration: 2000,
 			});
 
-			const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
-				useServerSide: false, // Use client-side for consistency
-			});
+			// DORMANT: Slip removed - using A4 invoice PDF instead
+			// const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
+			// 	useServerSide: false, // Use client-side for consistency
+			// });
+			const pdfBlob = await generateInvoicePDF(pdfData);
 
 			// Step 3: Get userId (admin's ID for employees)
 			const supabase = createClient();
@@ -533,12 +539,12 @@ export function WhatsAppShareButton({
 					{!isOnline ? (
 						<>
 							<WifiOff className="h-4 w-4" />
-							<span className="hidden sm:inline">Offline</span>
+							<span>Offline</span>
 						</>
 					) : (
 						<>
 							<MessageCircle className="h-4 w-4" />
-							<span className="hidden sm:inline">
+							<span>
 								{isSharing ? "Opening..." : "Share on WhatsApp"}
 							</span>
 						</>
