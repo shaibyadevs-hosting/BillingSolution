@@ -2793,12 +2793,12 @@ export function InvoiceForm({
 																							</TableCell>
 																							<TableCell className="px-1.5 py-1.5">
 																								<Select
-																									value={item.selling_unit || ""}
+																									value={item.selling_unit || "__none__"}
 																									onValueChange={(value) =>
 																										updateLineItem(
 																											item.id,
 																											"selling_unit",
-																											value === "" ? null : value
+																											value === "__none__" ? null : value
 																										)
 																									}
 																								>
@@ -2806,7 +2806,7 @@ export function InvoiceForm({
 																										<SelectValue placeholder="Unit" />
 																									</SelectTrigger>
 																									<SelectContent>
-																										<SelectItem value="">None</SelectItem>
+																										<SelectItem value="__none__">None</SelectItem>
 																										<SelectItem value="loose">Loose</SelectItem>
 																										<SelectItem value="together">Together</SelectItem>
 																									</SelectContent>
@@ -3401,12 +3401,12 @@ export function InvoiceForm({
 																		</TableCell>
 																		<TableCell className="px-1.5 py-1.5">
 																			<Select
-																				value={item.selling_unit || ""}
+																				value={item.selling_unit || "__none__"}
 																				onValueChange={(value) =>
 																					updateLineItem(
 																						item.id,
 																						"selling_unit",
-																						value === "" ? null : value
+																						value === "__none__" ? null : value
 																					)
 																				}
 																			>
@@ -3414,7 +3414,7 @@ export function InvoiceForm({
 																					<SelectValue placeholder="Unit" />
 																				</SelectTrigger>
 																				<SelectContent>
-																					<SelectItem value="">None</SelectItem>
+																					<SelectItem value="__none__">None</SelectItem>
 																					<SelectItem value="loose">Loose</SelectItem>
 																					<SelectItem value="together">Together</SelectItem>
 																				</SelectContent>
