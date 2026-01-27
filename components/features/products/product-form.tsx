@@ -511,16 +511,16 @@ export function ProductForm({ product }: ProductFormProps) {
             <div className="space-y-2">
               <Label htmlFor="selling_unit">Selling Unit Type</Label>
               <Select
-                value={formData.selling_unit || ""}
+                value={formData.selling_unit || "__none__"}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, selling_unit: value === "" ? null : value as "loose" | "together" })
+                  setFormData({ ...formData, selling_unit: value === "__none__" ? null : value as "loose" | "together" })
                 }
               >
                 <SelectTrigger id="selling_unit">
                   <SelectValue placeholder="Select selling unit type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None (Default)</SelectItem>
+                  <SelectItem value="__none__">None (Default)</SelectItem>
                   <SelectItem value="loose">Loose</SelectItem>
                   <SelectItem value="together">Together</SelectItem>
                 </SelectContent>
