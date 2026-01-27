@@ -2707,14 +2707,16 @@ export function InvoiceForm({
 																								<SelectValue placeholder="Select Product" />
 																							</SelectTrigger>
 																							<SelectContent className="max-h-60">
-																								{products.map((product) => (
-																									<SelectItem
-																										key={product.id}
-																										value={product.id}
-																									>
-																										{product.name}
-																									</SelectItem>
-																								))}
+																								{products
+																									.filter((p) => p?.id)
+																									.map((product) => (
+																										<SelectItem
+																											key={product.id}
+																											value={product.id}
+																										>
+																											{product.name}
+																										</SelectItem>
+																									))}
 																							</SelectContent>
 																						</Select>
 																					)}

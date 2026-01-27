@@ -709,11 +709,13 @@ export default function InventoryPage() {
 								</SelectTrigger>
 								<SelectContent>
 									<SelectItem value="all">All Categories</SelectItem>
-									{availableCategories.map((cat) => (
-										<SelectItem key={cat} value={cat}>
-											{cat}
-										</SelectItem>
-									))}
+									{availableCategories
+										.filter((c) => c != null && c !== "")
+										.map((cat) => (
+											<SelectItem key={cat} value={cat}>
+												{cat}
+											</SelectItem>
+										))}
 								</SelectContent>
 							</Select>
 							<Select value={stockFilter} onValueChange={setStockFilter}>

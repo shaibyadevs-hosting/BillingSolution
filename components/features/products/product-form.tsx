@@ -414,7 +414,7 @@ export function ProductForm({ product }: ProductFormProps) {
                   <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {PRODUCT_CATEGORIES.map((cat) => (
+                  {PRODUCT_CATEGORIES.filter((c) => c != null && c !== "").map((cat) => (
                     <SelectItem key={cat} value={cat}>
                       {cat}
                     </SelectItem>
@@ -442,7 +442,7 @@ export function ProductForm({ product }: ProductFormProps) {
                       <SelectValue placeholder="Select unit" />
                     </SelectTrigger>
                     <SelectContent>
-                      {PRODUCT_UNITS.map((unit) => (
+                      {PRODUCT_UNITS.filter((u) => u != null && u !== "").map((unit) => (
                         <SelectItem key={unit} value={unit}>
                           {unit}
                         </SelectItem>
