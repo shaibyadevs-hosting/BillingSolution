@@ -547,6 +547,11 @@ export async function executeInvoiceAction(
 	} = options;
 
 	try {
+		// WhatsApp sharing should always use the compact SLIP (80mm) format,
+		// regardless of what the UI has selected for print/download.
+		const effectiveFormat: DocumentFormat =
+			action === "whatsapp" ? "slip" : format;
+
 		// Step 1: Fetch invoice data (if not provided)
 		onProgress?.("Loading invoice data...");
 		const invoiceSource = await fetchInvoiceData(invoiceId, source);
@@ -558,22 +563,22 @@ export async function executeInvoiceAction(
 		// Step 3: Execute action
 		switch (action) {
 			case "print":
-				await handlePrint(documentData, format);
+				await handlePrint(documentData, effectiveFormat);
 				break;
 			case "download":
-				await handleDownload(documentData, format);
+				await handleDownload(documentData, effectiveFormat);
 				break;
 			case "whatsapp":
 				// WhatsApp action returns success status for redirect control
 				return await handleWhatsApp(
 					documentData,
 					invoiceId,
-					format,
+					effectiveFormat,
 					onProgress,
 					onWarning
 				);
 			case "r2-upload":
-				await handleR2Upload(documentData, invoiceId, format);
+				await handleR2Upload(documentData, invoiceId, effectiveFormat);
 				break;
 		}
 	} catch (error) {
