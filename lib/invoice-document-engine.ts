@@ -342,14 +342,6 @@ export async function prepareInvoiceDocumentData(
 	const businessPhone = store?.phone || profile?.business_phone || "";
 	const businessEmail = profile?.business_email || "";
 	let logoUrl = profile?.logo_url || "";
-	
-	// Extract bank details and proprietor from store
-	const proprietor = store?.proprietor || "";
-	const bankName = store?.bank_name || "";
-	const accountName = store?.account_name || "";
-	const accountNumber = store?.account_number || "";
-	const ifscCode = store?.ifsc_code || "";
-	const invoiceType = invoice.invoice_type || invoice.invoiceType || "Performa Invoice";
 
 	// Fetch admin's logo if not in profile (for employees)
 	// This is CRITICAL for print - must fetch synchronously
@@ -486,20 +478,6 @@ export async function prepareInvoiceDocumentData(
 		terms: invoice.terms,
 		isGstInvoice,
 		isB2B,
-		// Additional fields for Performa Invoice format
-		proprietor,
-		bankName,
-		accountName,
-		accountNumber,
-		ifscCode,
-		invoiceType,
-	} as InvoiceDocumentData & {
-		proprietor?: string;
-		bankName?: string;
-		accountName?: string;
-		accountNumber?: string;
-		ifscCode?: string;
-		invoiceType?: string;
 	};
 }
 
@@ -528,12 +506,6 @@ async function generatePDF(
 			businessEmail: data.businessEmail,
 			logoUrl: data.logoUrl,
 			servedBy: data.servedBy,
-			proprietor: (data as any).proprietor,
-			bankName: (data as any).bankName,
-			accountName: (data as any).accountName,
-			accountNumber: (data as any).accountNumber,
-			ifscCode: (data as any).ifscCode,
-			invoiceType: (data as any).invoiceType,
 		};
 		return await generateInvoicePDF(pdfData);
 	} else {

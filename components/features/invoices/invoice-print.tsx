@@ -28,12 +28,10 @@ export function InvoicePrint({
 }: InvoicePrintProps) {
 	const { toast } = useToast();
 	const [isGenerating, setIsGenerating] = useState(false);
-	// DORMANT: Slip format removed - only invoice format now
-	const [format, setFormat] = useState<"invoice">("invoice");
+	const [format, setFormat] = useState<"invoice" | "slip">("invoice");
 
-	// DORMANT: Slip format removed
-	const handlePrint = async (selectedFormat?: "invoice") => {
-		const currentFormat = selectedFormat || "invoice";
+	const handlePrint = async (selectedFormat?: "invoice" | "slip") => {
+		const currentFormat = selectedFormat || format;
 		setIsGenerating(true);
 		try {
 			// Prepare source data if provided
@@ -91,14 +89,13 @@ export function InvoicePrint({
 				>
 					Print Invoice
 				</DropdownMenuItem>
-				{/* DORMANT: Slip print option removed */}
-				{/* <DropdownMenuItem
+				<DropdownMenuItem
 					onClick={() => {
 						handlePrint("slip");
 					}}
 				>
 					Print Slip
-				</DropdownMenuItem> */}
+				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

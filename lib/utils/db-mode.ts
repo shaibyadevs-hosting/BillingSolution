@@ -88,13 +88,12 @@ async function getAdminDatabaseMode(): Promise<DatabaseMode> {
                     .eq("id", store.admin_user_id)
                     .maybeSingle()
 
-                  // Prefer business_settings for employees. If both exist and differ, sync business_settings to profile and use profile.
-                  let mode = (settings?.database_mode as DatabaseMode) || (profile?.database_mode as DatabaseMode) || 'indexeddb'
-                  if (profile?.database_mode && settings?.database_mode && profile.database_mode !== settings.database_mode) {
-                    if (process.env.NODE_ENV === 'development') {
-                      console.warn("[getAdminDatabaseMode] Employee's admin: user_profiles and business_settings mismatch. Using business_settings for this session.")
-                    }
-                    mode = (settings?.database_mode as DatabaseMode) || 'indexeddb'
+                  // Prefer business_settings, but log warning if they don't match
+                  let mode = (settings?.database_mode as DatabaseMode) || 'indexeddb'
+                  
+                  if (profile?.database_mode && profile.database_mode !== mode) {
+                    console.warn("[getAdminDatabaseMode] Database mode mismatch detected for employee's admin. Using business_settings value.")
+                    // Use business_settings value (what employee inherits)
                   }
 
                   // If mode changed from localStorage, clear cache and update localStorage
@@ -163,22 +162,9 @@ async function getAdminDatabaseMode(): Promise<DatabaseMode> {
         // If it exists, use it. If not, use business_settings as fallback.
         const mode = modeFromProfile || modeFromSettings || 'indexeddb'
 
-        // If modes don't match: sync business_settings to user_profiles (fix root cause) and reduce log noise
+        // If modes don't match, log warning (they should always match after our fix)
         if (modeFromProfile && modeFromSettings && modeFromProfile !== modeFromSettings) {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn("[getAdminDatabaseMode] Database mode mismatch between user_profiles and business_settings. Syncing business_settings to match user_profiles.")
-          }
-          // Fire-and-forget: sync business_settings.database_mode to match user_profiles (primary)
-          supabase
-            .from("business_settings")
-            .update({ database_mode: modeFromProfile })
-            .eq("user_id", user.id)
-            .then(({ error }) => {
-              if (error && process.env.NODE_ENV === 'development') {
-                console.warn("[getAdminDatabaseMode] Failed to sync business_settings.database_mode:", error.message)
-              }
-            })
-            .catch(() => {})
+          console.warn("[getAdminDatabaseMode] Database mode mismatch between user_profiles and business_settings. Using user_profiles value (primary source).")
         }
 
         // CRITICAL: If mode changed from localStorage, clear cache and update localStorage

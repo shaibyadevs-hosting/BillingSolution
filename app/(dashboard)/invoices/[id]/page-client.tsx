@@ -31,9 +31,7 @@ import {
 	executeInvoiceAction,
 	prepareInvoiceDocumentData,
 } from "@/lib/invoice-document-engine";
-// DORMANT: Slip functionality removed - using A4 invoice instead
-// import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
-import { generateInvoicePDF } from "@/lib/utils/invoice-pdf";
+import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
 import { createClient } from "@/lib/supabase/client";
 import { getB2BModeStatus } from "@/lib/utils/b2b-mode";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -352,12 +350,10 @@ export default function InvoiceDetailPageClient() {
 
 			const pdfData = await prepareInvoiceDocumentData(source);
 
-			// DORMANT: Slip removed - using A4 invoice PDF instead
-			// Generate PDF using unified engine (A4 invoice format)
-			// const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
-			// 	useServerSide: false,
-			// });
-			const pdfBlob = await generateInvoicePDF(pdfData);
+			// Generate PDF using unified engine (slip format for Web Share)
+			const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
+				useServerSide: false,
+			});
 
 			// Get invoice number and business name for file naming and sharing
 			const invoiceNumber = pdfData.invoiceNumber;
